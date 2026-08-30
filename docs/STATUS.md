@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 5 done — package resolution locates entry `.d.ts` files for real Nest 10/11/12 packages. No CLI wiring yet (extraction doesn't exist until Phase 6).
+**Phase:** 6 done — symbol extraction gets exactly 206/206 exports from the real `@nestjs/common@12.0.1`, on the first full run. No CLI wiring yet (cache doesn't exist until Phase 7).
 
 ---
 
@@ -18,7 +18,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 3 | Terminal renderer | done |
 | 4 | Guide command — **ship `0.1.0`** | done |
 | 5 | Package resolution | done |
-| 6 | Symbol extraction | not started |
+| 6 | Symbol extraction | done |
 | 7 | Cache | not started |
 | 8 | Cross-linking + package index + `@Decorator` lookup | not started |
 | 9 | Release | not started |
@@ -31,6 +31,7 @@ Record every benchmark here as phases land. A number not written down is a numbe
 |---|---|---|---|
 | 0 | `nest-doc --version` | 60 ms | 26.9 ms median / 54.1 ms p95 (linked binary, this machine) |
 | 4 | `nest-doc interceptors` | 150 ms | 42-51 ms median across runs (linked binary, this machine) |
+| 6 | Cold extraction, `@nestjs/common@12.0.1` (in-process, not a CLI spawn) | 207 ms (prior measurement, ADR-0002) | 35-42 ms across 5 runs, this machine |
 | 7 | `nest-doc common.Injectable` (warm) | 150 ms | — |
 
 ## Settled
@@ -61,6 +62,9 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Which resolution case do Nest 10/11/12 actually take? | All three land on case 3, but not the same way. 12.0.1 has an `exports` map with no `types` condition (matches ARCHITECTURE §4.3 exactly). 11.2.3 and 10.4.22 have **neither an `exports` map nor a `main` field at all** — nothing for the documented "sibling-infer from `exports["."]`" to read. Node/TS's implicit `./index.js` default has to resolve first | ARCHITECTURE §4.3, Phase 5 |
 | Exit code for "package ships no types"? | 3, not 1 — ARCHITECTURE §10's failure-modes table said exit 1, contradicting SPEC.md §5's own exit code table (and PROMPTS.md's explicit Phase 5 instruction). Corrected | ARCHITECTURE §10, Phase 5 |
 | `common.X` official-scope table? | 33 packages, built from two verified sources: the `nestjs/nest` monorepo's `packages/` directory (9) plus every `@nestjs/*` string found in real guide code samples (24 more, cross-checked against npm) — not guessed | Phase 5 |
+| Named-re-export filter propagation? | Must propagate through nested wildcards unchanged, not reset to "all" — `features/arguments-host.interface.d.ts` declares `ContextType`, `ArgumentsHost`, and `HttpArgumentsHost`, and only the first two are in root `index.d.ts`'s 56-name curated list. Resetting to "all" on each `export *` would wrongly pull `HttpArgumentsHost` in too | ARCHITECTURE §5.1, Phase 6 |
+| TypeScript's `@see` bare-URL JSDoc parsing? | `@see https://x` splits into `tag.name="https"` and `tag.comment="://x"` — a real parser quirk, not a bug in this project. 9 of 164 real `@see` tags hit it. Reconstructing `name + comment` recovers the full URL for every tag shape | Phase 6 |
+| Extraction result: 206/206 on first full run | Exactly 206 exports, 177 `isPublicApi`, `Injectable` preserves `InjectableOptions` and carries exactly 3 `@see` links — all four PROMPTS.md Phase 6 assertions passed without needing a fix-up pass, once the filter-propagation trap above was handled correctly from the start | Phase 6 |
 
 **0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output — all verified against the real linked binary, not just unit tests. Phase 9 (release) still needs to happen before actually publishing.
 
@@ -70,7 +74,7 @@ Record every benchmark here as phases land. A number not written down is a numbe
 
 **Latency headroom is generous, not thin.** ADR-0005 settled on plain `commander` (Option B), so the framework line item is ~46 ms rather than the ~97 ms of `nest-commander`, leaving well over the ~30 ms headroom the ADR costed for Option A. Every dependency added after Phase 0 still needs measuring — the CI benchmark is the guard, and it exists from Phase 0 for this reason.
 
-**Named re-exports are the likely silent bug.** Extraction that handles only `export *` finds 155 of 206 symbols and looks like it works. Phase 6 asserts the count (corrected from "Phase 3" — that's the terminal renderer, not extraction).
+~~**Named re-exports are the likely silent bug.**~~ Resolved in Phase 6 — extraction correctly propagates the named-export filter through nested wildcards (not just handling `export *` alone) and gets exactly 206/206 against the real package, verified on the first full run.
 
 **Docs repo restructure breaks the corpus build.** Fails at build time, never at runtime. Acceptable, but the build script needs an owner when it breaks.
 
