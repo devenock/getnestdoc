@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 0 done — skeleton, benchmark harness, and CI in place.
+**Phase:** 1 done — guide corpus builds and tests pass against a pinned fixture snapshot.
 
 ---
 
@@ -13,7 +13,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | # | Phase | Status |
 |---|---|---|
 | 0 | Skeleton + benchmark harness | done |
-| 1 | Guide corpus → `guides.json` | not started |
+| 1 | Guide corpus → `guides.json` | done |
 | 2 | Alias table → `aliases.json` | not started |
 | 3 | Terminal renderer | not started |
 | 4 | Guide command — **ship `0.1.0`** | not started |
@@ -47,6 +47,8 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Does Nest bootstrap fit the budget? | Yes, bundled: 97 ms of 150 ms | PROBLEM §Gate 3 |
 | Test runner? | `node --test` + native TS, zero deps | TESTING |
 | CLI framework? | Plain `commander` (Option B) | ADR-0005 |
+| Only HTML `<table>`s in the corpus? | No — 45 more as GFM pipe tables, 80 total | ARCHITECTURE §6.1, Phase 1 |
+| Heading anchor algorithm? | `text.replace(/\s/g, '-').toLowerCase()`, verified against `header-anchor.directive.ts` in the docs repo — no punctuation stripping | Phase 1 |
 
 ---
 
@@ -57,6 +59,8 @@ Record every benchmark here as phases land. A number not written down is a numbe
 **Named re-exports are the likely silent bug.** Extraction that handles only `export *` finds 155 of 206 symbols and looks like it works. Phase 3 asserts the count.
 
 **Docs repo restructure breaks the corpus build.** Fails at build time, never at runtime. Acceptable, but the build script needs an owner when it breaks.
+
+**`guides.json` is 4.1 MB, over double ARCHITECTURE.md's ~2 MB estimate.** Even after stripping marked's redundant `raw` field (~2 MB of the unstripped 6.5 MB). The real corpus has grown since that number was written — a new `observability/` section and more tables/figures than originally documented. Not a build blocker, but worth watching once Phase 3 measures guide-JSON load time against the latency budget (ARCHITECTURE §9 assumes ~1 ms for this step).
 
 **`typescript@6` is a frozen foundation.** No urgency, but there is an eventual migration or an indefinite freeze. Revisit when the Go port's API story settles.
 
