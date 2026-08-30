@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 8 done — cross-linking (`See also`), the package index (`nest-doc @nestjs/common`), and bare symbol/decorator lookup (`nest-doc @Get`, `nest-doc Get`) all land. `nest-doc update` is the only networked command (verified: exactly 2 `fetch()` call sites in the whole bundle, both in the docs-repo fetch path). All query forms are within the 150 ms budget on this machine: package index 55.5 ms median warm / 252-270 ms cold, bare symbol 51.4 ms median warm.
+**Phase:** 9 mostly done — packaging, install, and licensing are verified. **Publishing to npm and opening the docs.nestjs.com issue are deliberately not done yet** — both are external, effectively-irreversible actions the user asked to hold off on until they give the explicit go-ahead. Everything else in the release checklist is complete: tarball contents verified (656.3 kB packed, 7 files — `LICENSE`, `README.md`, `data/*.json`, `dist/nest-doc.mjs`, `package.json`; no `test/`, `scripts/`, or fixtures), a real global install from the tarball works and `nest-doc` resolves on `PATH`, and two real gaps found and fixed along the way: no `LICENSE` file existed at all despite the README claiming MIT (added, including the required docs.nestjs.com copyright notice per ADR-0004 — previously only mentioned in README prose, never actually retained in the package), and the README claimed "Node 20 or newer" while `package.json`'s `engines` field and the esbuild bundle target both require Node 22.6+ (README corrected to match).
 
 ---
 
@@ -21,7 +21,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 6 | Symbol extraction | done |
 | 7 | Cache | done |
 | 8 | Cross-linking + package index + `@Decorator` lookup | done |
-| 9 | Release | not started |
+| 9 | Release | packaging/install/licensing done; publish + docs.nestjs.com issue awaiting go-ahead |
 
 ## Measurements
 
@@ -83,8 +83,14 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | `nest-doc Module` (no flag) — guide or symbol? | Guide, by design (`--api` forces the symbol) — but this exposed a real gap: no route in the live docs site ever links to `/module` (singular), only `/modules`, so the auto-derived alias table has no entry for it and the query wouldn't resolve at all without help. Fixed with a small, explicitly-curated single-entry supplement (`module` → `modules`) plus a case-insensitive fallback in `findGuide`, not a general singular/plural heuristic | ARCHITECTURE §4.1, Phase 8 |
 | What actually triggers SPEC.md's "ambiguous query, exits 1, lists both options"? | Not guide-vs-symbol overlap (that's resolved deterministically — guides win by running first in resolution order). It's specifically a bare name resolving to more than one *installed package* in the name index (SPEC.md §2b) — currently untriggered by the real shipped index (zero collisions), verified instead with a synthetic collision injected into a scratch copy of `data/names.json` | ARCHITECTURE §4.1, Phase 8 |
 | `nest-doc update` — only networked path? | Verified directly against the built bundle: exactly 2 `fetch()` call sites total, both inside `nest/update/fetch-docs-repo.ts`, both only reachable from the `update` subcommand's action handler | Phase 8 |
+| Packed tarball contents and size | 656.3 kB packed (4.4 MB unpacked), 7 files: `LICENSE`, `README.md`, `data/{aliases,guides,names}.json`, `dist/nest-doc.mjs`, `package.json`. Confirmed absent: `test/`, `scripts/`, fixtures | Phase 9 |
+| Real global install from the packed tarball | `npm install -g --prefix <isolated>` then `nest-doc interceptors` from a clean directory with no project-local `node_modules` — resolves on `PATH`, exits 0, correct output | Phase 9 |
+| Was the "MIT" license claim actually backed by a `LICENSE` file? | No — `package.json` had no `license` field and no `LICENSE` file existed at all. ADR-0004's requirement to retain the docs.nestjs.com copyright notice "in the package" was also unmet — the README's attribution section states facts about it but never reproduces the actual notice text, and nothing packed carried it. Fixed: added `LICENSE` (MIT, this project) with the verified real docs.nestjs.com notice appended, and `"license": "MIT"` in `package.json` | ADR-0004, Phase 9 |
+| Does `nest-doc` actually work on Node 20, as the README claimed? | No — `package.json`'s `engines` field requires `>=22.6.0` and `scripts/bundle.ts` targets `node22` explicitly; the README's "Node 20 or newer" was stale and never matched either. Corrected to Node 22.6+ | Phase 9 |
+| Can the offline guarantee be tested with networking actually disabled? | Not fully, in this sandbox: no `sudo`, `/etc/hosts` not writable, no network-namespace tooling, and Node's `fetch` doesn't respect `HTTP_PROXY`/`HTTPS_PROXY` (verified empirically) — there's no available mechanism here to sever network access without elevated privileges. Verified instead: statically (Phase 8's exactly-2-`fetch()`-call-sites test) and dynamically (every non-`update` command completes in 45-94 ms from a clean directory with no project `node_modules`, consistent with no network I/O being attempted). User accepted this as sufficient for now | Phase 9 |
+| Asciinema recording for the README | The `asciinema` CLI isn't installed in this environment and a live recording requires an interactive TTY session I can't run non-interactively; uploading to asciinema.org for embedding is also an external, user-owned action. Generated a real, valid asciicast v2 file (`demo.cast`) from genuine captured `nest-doc` output instead (not fabricated) — playable locally via `asciinema play demo.cast`. Uploading it and swapping in the embedded SVG badge is left as a manual step (noted inline in the README) | Phase 9 |
 
-**0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output — all verified against the real linked binary, not just unit tests. Phase 9 (release) still needs to happen before actually publishing.
+**0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output, package index, bare symbol/decorator lookup, `nest-doc update` — all verified against the real linked binary and a real packed-tarball install, not just unit tests. Publishing to npm and opening the docs.nestjs.com issue are the only remaining Phase 9 items, both awaiting explicit user go-ahead.
 
 ---
 
