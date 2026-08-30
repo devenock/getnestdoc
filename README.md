@@ -43,9 +43,10 @@ Node 22.6 or newer.
 $ nest-doc <query>              guide or symbol, auto-detected
 $ nest-doc <query> --guide      force a guide lookup
 $ nest-doc <query> --api        force a symbol lookup
-$ nest-doc --all <package>      every export, not just the summary
+$ nest-doc --all <package>      every export, not just the public ones
 $ nest-doc <query> --js         show JavaScript code samples instead of TypeScript
 $ nest-doc update               refresh the bundled guides
+$ nest-doc --clear-cache        drop the cached symbol data
 ```
 
 Guides resolve by concept, the way you actually think about Nest:
@@ -61,6 +62,14 @@ Symbols resolve against **your** `node_modules`, so you get the version you actu
 ```console
 $ nest-doc common.Injectable
 $ nest-doc @nestjs/core.Reflector
+$ nest-doc @nestjs/common        # everything the package exports
+```
+
+Or skip the package name — type what you actually see in the code:
+
+```console
+$ nest-doc @Get                 # same decorator, same answer
+$ nest-doc Get
 ```
 
 Output is plain text when piped, so it composes:
@@ -80,7 +89,7 @@ Two sources behind one command.
 
 The two link up. Nest's JSDoc `@see` tags point at docs.nestjs.com URLs, which resolve to the local guides — so a symbol lookup can hand you the relevant guide section without a browser.
 
-Full detail in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+Full detail in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ## Speed
 
