@@ -18,6 +18,7 @@
     "lint": "eslint .",
     "build": "node scripts/bundle.ts",
     "build:guides": "node scripts/build-guides.ts",
+    "build:aliases": "node scripts/build-aliases.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "bench": "node scripts/bench.ts"
   },
