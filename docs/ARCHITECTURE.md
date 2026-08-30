@@ -369,7 +369,7 @@ Roughly 74 ms of that is the CLI framework — over 60% of the budget, and the l
 | Situation | Behaviour |
 |---|---|
 | Package not installed | Report it, offer the guide match if one exists, exit 1 |
-| Package ships no types | Say so, suggest `@types/<name>`, exit 1 |
+| Package ships no types | Say so, suggest `@types/<name>`, exit 3 (corrected from "exit 1" — contradicted SPEC.md §5's exit code table, which reserves 3 specifically for "package found but unusable"; Phase 5) |
 | Symbol not found in package | List near matches from that package's export list |
 | Cache corrupt | Delete the entry, re-extract, continue silently |
 | Cache directory unwritable | Warn once to stderr, continue without caching |
