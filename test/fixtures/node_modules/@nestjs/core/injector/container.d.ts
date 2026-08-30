@@ -1,0 +1,66 @@
+import type { DynamicModule, Provider } from '@nestjs/common';
+import { ApplicationConfig } from '../application-config.js';
+import { SerializedGraph } from '../inspector/serialized-graph.js';
+import { ModuleCompiler } from './compiler.js';
+import { ContextId } from './instance-wrapper.js';
+import { Module } from './module.js';
+import { ModulesContainer } from './modules-container.js';
+import { ModuleOpaqueKeyFactory } from './opaque-key-factory/interfaces/module-opaque-key-factory.interface.js';
+import { type EnhancerSubtype, type Injectable, type NestApplicationContextOptions } from '@nestjs/common/internal';
+import type { Type } from '@nestjs/common';
+type ModuleMetatype = Type<any> | DynamicModule | Promise<DynamicModule>;
+type ModuleScope = Type<any>[];
+export declare class NestContainer {
+    private readonly _applicationConfig;
+    private readonly _contextOptions;
+    private readonly globalModules;
+    private readonly modules;
+    private readonly dynamicModulesMetadata;
+    private readonly internalProvidersStorage;
+    private readonly _serializedGraph;
+    private moduleCompiler;
+    private internalCoreModule;
+    constructor(_applicationConfig?: ApplicationConfig | undefined, _contextOptions?: NestApplicationContextOptions | undefined);
+    get serializedGraph(): SerializedGraph;
+    get applicationConfig(): ApplicationConfig | undefined;
+    get contextOptions(): NestApplicationContextOptions | undefined;
+    setHttpAdapter(httpAdapter: any): void;
+    getHttpAdapterRef(): import("../index.js").AbstractHttpAdapter<any, any, any>;
+    getHttpAdapterHostRef(): import("../index.js").HttpAdapterHost<import("../index.js").AbstractHttpAdapter<any, any, any>>;
+    addModule(metatype: ModuleMetatype, scope: ModuleScope): Promise<{
+        moduleRef: Module;
+        inserted: boolean;
+    } | undefined>;
+    replaceModule(metatypeToReplace: ModuleMetatype, newMetatype: ModuleMetatype, scope: ModuleScope): Promise<{
+        moduleRef: Module;
+        inserted: boolean;
+    } | undefined>;
+    private setModule;
+    addDynamicMetadata(token: string, dynamicModuleMetadata: Partial<DynamicModule>, scope: Type<any>[]): Promise<void>;
+    addDynamicModules(modules: any[], scope: Type<any>[]): Promise<void>;
+    isGlobalModule(metatype: Type<any>, dynamicMetadata?: Partial<DynamicModule>): boolean;
+    addGlobalModule(module: Module): void;
+    getModules(): ModulesContainer;
+    getModuleCompiler(): ModuleCompiler;
+    getModuleByKey(moduleKey: string): Module | undefined;
+    getInternalCoreModuleRef(): Module | undefined;
+    addImport(relatedModule: Type<any> | DynamicModule, token: string): Promise<void>;
+    addProvider(provider: Provider, token: string, enhancerSubtype?: EnhancerSubtype): string | symbol | Function;
+    addInjectable(injectable: Provider, token: string, enhancerSubtype: EnhancerSubtype, host?: Type<Injectable>): string | symbol | Function | import("./instance-wrapper.js").InstanceWrapper<unknown>;
+    addExportedProviderOrModule(toExport: Type<any> | DynamicModule, token: string): void;
+    addController(controller: Type<any>, token: string): void;
+    clear(): void;
+    replace(toReplace: any, options: {
+        scope: any[] | null;
+    }): void;
+    bindGlobalScope(): void;
+    bindGlobalsToImports(moduleRef: Module): void;
+    bindGlobalModuleToModule(target: Module, globalModule: Module): void;
+    getDynamicMetadataByToken(token: string): Partial<DynamicModule>;
+    getDynamicMetadataByToken<K extends Exclude<keyof DynamicModule, 'global' | 'module'>>(token: string, metadataKey: K): DynamicModule[K];
+    registerCoreModuleRef(moduleRef: Module): void;
+    getModuleTokenFactory(): ModuleOpaqueKeyFactory;
+    registerRequestProvider<T = any>(request: T, contextId: ContextId): void;
+    private shouldInitOnPreview;
+}
+export {};

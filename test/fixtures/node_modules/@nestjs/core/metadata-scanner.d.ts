@@ -1,0 +1,17 @@
+import { type Injectable } from '@nestjs/common/internal';
+export declare class MetadataScanner {
+    private readonly cachedScannedPrototypes;
+    /**
+     * @deprecated
+     * @see {@link getAllMethodNames}
+     * @see getAllMethodNames
+     */
+    scanFromPrototype<T extends Injectable, R = any>(instance: T, prototype: object | null, callback: (name: string) => R): R[];
+    /**
+     * @deprecated
+     * @see {@link getAllMethodNames}
+     * @see getAllMethodNames
+     */
+    getAllFilteredMethodNames(prototype: object): IterableIterator<string>;
+    getAllMethodNames(prototype: object | null): string[];
+}

@@ -1,0 +1,48 @@
+import { Logger } from '@nestjs/common';
+import { ExternalContextCreator } from '../../helpers/external-context-creator.js';
+import { HttpAdapterHost } from '../../helpers/http-adapter-host.js';
+import { InitializeOnPreviewAllowlist } from '../../inspector/initialize-on-preview.allowlist.js';
+import { SerializedGraph } from '../../inspector/serialized-graph.js';
+import { Injector } from '../injector.js';
+import { InstanceLoader } from '../instance-loader.js';
+import { LazyModuleLoader } from '../lazy-module-loader/lazy-module-loader.js';
+import { ModulesContainer } from '../modules-container.js';
+import { InternalCoreModule } from './internal-core-module.js';
+export class InternalCoreModuleFactory {
+    static create(container, scanner, moduleCompiler, httpAdapterHost, graphInspector, moduleOverrides) {
+        const lazyModuleLoaderFactory = () => {
+            const logger = new Logger(LazyModuleLoader.name, {
+                timestamp: false,
+            });
+            const injector = new Injector({
+                preview: container.contextOptions?.preview ?? false,
+                instanceDecorator: container.contextOptions?.instrument?.instanceDecorator,
+            });
+            const instanceLoader = new InstanceLoader(container, injector, graphInspector, logger);
+            return new LazyModuleLoader(scanner, instanceLoader, moduleCompiler, container.getModules(), moduleOverrides);
+        };
+        InitializeOnPreviewAllowlist.add(InternalCoreModule);
+        return InternalCoreModule.register([
+            {
+                provide: ExternalContextCreator,
+                useFactory: () => ExternalContextCreator.fromContainer(container),
+            },
+            {
+                provide: ModulesContainer,
+                useFactory: () => container.getModules(),
+            },
+            {
+                provide: HttpAdapterHost,
+                useFactory: () => httpAdapterHost,
+            },
+            {
+                provide: LazyModuleLoader,
+                useFactory: lazyModuleLoaderFactory,
+            },
+            {
+                provide: SerializedGraph,
+                useFactory: () => container.serializedGraph,
+            },
+        ]);
+    }
+}

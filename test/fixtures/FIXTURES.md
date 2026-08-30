@@ -43,8 +43,12 @@ carves this one back in.
 | `@nestjs/common/` | `@nestjs/common@12.0.1` | 3 — `exports["."]` present, no `types` condition; sibling-infer `./index.js` → `./index.d.ts` |
 | `@nestjs/common-11/` | `@nestjs/common@11.2.3` | 3 — **no `exports` map at all**, no `main` either; falls all the way to the implicit `./index.js` default before sibling-inferring `.d.ts` |
 | `@nestjs/common-10/` | `@nestjs/common@10.4.22` | 3 — same shape as 11.2.3 |
+| `@nestjs/core/` | `@nestjs/core@12.0.1` | 3 — `exports["."]` is a bare string (`"./index.js"`), not an object with conditions; sibling-infer straight from it |
+| `@nestjs/swagger/` | `@nestjs/swagger@12.0.1` | 1 — has **both** an explicit top-level `"types": "dist/index.d.ts"` and a conditional `exports` map; case 1 wins on priority even though case 2 would also resolve |
 | `typed-legacy/` | `picocolors@1.0.1` | 1 — explicit top-level `"types": "./picocolors.d.ts"`, no `exports` map to even consider |
 | `untyped/` | `is-thirteen@2.0.0` | none resolve — no `types`/`typings`/`exports`, no `.d.ts` anywhere in the package, no `@types/is-thirteen` published. Exit 3. |
+
+**Phase 8 (ADR-0007) findings, measured against these three real packages:** zero colliding symbol names across all 420 unique names extracted from `@nestjs/common` (206), `@nestjs/core` (54), and `@nestjs/swagger` (160) — not just the public ones. `@nestjs/core` has 16 `@publicApi`-tagged symbols (ADR-0007 estimated 17 from an earlier, less precise pass; 16 is the measured, verified number and is what the tests assert). `@nestjs/swagger` confirmed to ship **zero** JSDoc comments and **zero** `@publicApi` tags across all 160 exports — the package-index fallback (list everything when nothing is tagged public) and the "no documentation available" per-symbol fallback are both tested against it directly.
 
 **Finding:** ARCHITECTURE.md §4.3 describes case 3 as "exports map without a
 types condition → sibling inference," measured against 12.0.1 only. Verified

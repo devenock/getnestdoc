@@ -1,0 +1,19 @@
+import { RequestMethod, VERSION_NEUTRAL } from '@nestjs/common';
+export const MODULE_INIT_MESSAGE = (text, module) => `${module} dependencies initialized`;
+export const ROUTE_MAPPED_MESSAGE = (path, method) => `Mapped {${path}, ${RequestMethod[method]}} route`;
+export const VERSIONED_ROUTE_MAPPED_MESSAGE = (path, method, version) => {
+    const controllerVersions = Array.isArray(version) ? version : [version];
+    const versions = controllerVersions
+        .map(version => (version === VERSION_NEUTRAL ? 'Neutral' : version))
+        .join(',');
+    return `Mapped {${path}, ${RequestMethod[method]}} (version: ${versions}) route`;
+};
+export const CONTROLLER_MAPPING_MESSAGE = (name, path) => `${name} {${path}}:`;
+export const VERSIONED_CONTROLLER_MAPPING_MESSAGE = (name, path, version) => {
+    const controllerVersions = Array.isArray(version) ? version : [version];
+    const versions = controllerVersions
+        .map(version => (version === VERSION_NEUTRAL ? 'Neutral' : version))
+        .join(',');
+    return `${name} {${path}} (version: ${versions}):`;
+};
+export const INVALID_EXECUTION_CONTEXT = (methodName, currentContext) => `Calling ${methodName} is not allowed in this context. Your current execution context is "${currentContext}".`;

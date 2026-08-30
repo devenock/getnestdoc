@@ -44,6 +44,28 @@ test("Nest 10 (@nestjs/common@10.4.22): same shape as 11, same result", () => {
   });
 });
 
+test("@nestjs/core@12.0.1: exports[\".\"] is a bare string, not an object with conditions -> case 3", () => {
+  const found = findPackageDir("@nestjs/core", FIXTURES_ROOT);
+  assert.ok(found, "fixture not found");
+  const result = resolveEntryTypes(found!);
+  assert.deepEqual(result, {
+    found: true,
+    entryFile: join(FIXTURES_ROOT, "node_modules/@nestjs/core/index.d.ts"),
+    resolutionCase: 3,
+  });
+});
+
+test("@nestjs/swagger@12.0.1: has both an explicit types field and a conditional exports map -> case 1 wins", () => {
+  const found = findPackageDir("@nestjs/swagger", FIXTURES_ROOT);
+  assert.ok(found, "fixture not found");
+  const result = resolveEntryTypes(found!);
+  assert.deepEqual(result, {
+    found: true,
+    entryFile: join(FIXTURES_ROOT, "node_modules/@nestjs/swagger/dist/index.d.ts"),
+    resolutionCase: 1,
+  });
+});
+
 test("legacy explicit types field (picocolors@1.0.1) resolves via case 1", () => {
   const found = findPackageDir("typed-legacy", FIXTURES_ROOT);
   assert.ok(found, "fixture not found");

@@ -1,0 +1,194 @@
+import { isNil, isSymbol } from '@nestjs/common/internal';
+/**
+ * Returns the name of an instance or `undefined`
+ * @param instance The instance which should get the name from
+ */
+const getInstanceName = (instance) => {
+    if (instance?.forwardRef) {
+        return instance.forwardRef()?.name;
+    }
+    if (instance?.module) {
+        return instance.module?.name;
+    }
+    return instance?.name;
+};
+/**
+ * Returns the name of the dependency.
+ * Tries to get the class name, otherwise the string value
+ * (= injection token). As fallback to any falsy value for `dependency`, it
+ * returns `fallbackValue`
+ * @param dependency The name of the dependency to be displayed
+ * @param fallbackValue The fallback value if the dependency is falsy
+ * @param disambiguated Whether dependency's name is disambiguated with double quotes
+ */
+const getDependencyName = (dependency, fallbackValue, disambiguated = true) => 
+// use class name
+getInstanceName(dependency) ||
+    // use injection token (symbol)
+    (isSymbol(dependency) && dependency.toString()) ||
+    // use string directly
+    (dependency
+        ? disambiguated
+            ? `"${dependency}"`
+            : dependency
+        : undefined) ||
+    // otherwise
+    fallbackValue;
+/**
+ * Returns the name of the module
+ * Tries to get the class name. As fallback it returns 'current'.
+ * @param module The module which should get displayed
+ */
+const getModuleName = (module) => (module && getInstanceName(module.metatype)) || 'current';
+const stringifyScope = (scope) => (scope || []).map(getInstanceName).join(' -> ');
+export const UNKNOWN_DEPENDENCIES_MESSAGE = (type, unknownDependencyContext, moduleRef) => {
+    const { index, name, dependencies, key } = unknownDependencyContext;
+    const moduleName = getModuleName(moduleRef);
+    const dependencyName = getDependencyName(name, 'dependency');
+    const isImportTypeIssue = !isNil(index) &&
+        dependencies &&
+        (dependencies[index] === undefined ||
+            dependencies[index] === Object ||
+            (typeof dependencies[index] === 'function' &&
+                dependencies[index].name === 'Object'));
+    let potentialSolutions;
+    if (isImportTypeIssue) {
+        potentialSolutions = `\n
+Potential solutions:
+- The dependency at index [${index}] appears to be undefined at runtime
+- This commonly occurs when using 'import type' instead of 'import' for injectable classes
+- Check your imports and change:
+  ❌ import type { SomeService } from './some.service';
+  ✅ import { SomeService } from './some.service';
+- Ensure the imported class is decorated with @Injectable() or is a valid provider
+- If using dynamic imports, ensure the class is available at runtime, not just for type checking
+
+For more common dependency resolution issues, see: https://docs.nestjs.com/faq/common-errors`;
+    }
+    else {
+        potentialSolutions =
+            // If module's name is well defined
+            moduleName !== 'current'
+                ? `\n
+Potential solutions:
+- Is ${moduleName} a valid NestJS module?
+- If ${dependencyName} is a provider, is it part of the current ${moduleName}?
+- If ${dependencyName} is exported from a separate @Module, is that module imported within ${moduleName}?
+  @Module({
+    imports: [ /* the Module containing ${dependencyName} */ ]
+  })
+
+For more common dependency resolution issues, see: https://docs.nestjs.com/faq/common-errors`
+                : `\n
+Potential solutions:
+- If ${dependencyName} is a provider, is it part of the current Module?
+- If ${dependencyName} is exported from a separate @Module, is that module imported within Module?
+  @Module({
+    imports: [ /* the Module containing ${dependencyName} */ ]
+  })
+
+For more common dependency resolution issues, see: https://docs.nestjs.com/faq/common-errors`;
+    }
+    let message = `Nest can't resolve dependencies of the ${type.toString()}`;
+    if (isNil(index)) {
+        message += `. Please make sure that the "${key.toString()}" property is available in the current context.${potentialSolutions}`;
+        return message;
+    }
+    const dependenciesName = (dependencies || []).map(dependencyName => getDependencyName(dependencyName, '+', false));
+    dependenciesName[index] = '?';
+    const tokenFragment = !isImportTypeIssue && name !== undefined ? ` ${dependencyName}` : '';
+    const contextLabel = isImportTypeIssue ? 'current' : moduleName;
+    message += ` (`;
+    message += dependenciesName.join(', ');
+    message += `). Please make sure that the argument${tokenFragment} at index [${index}]`;
+    message += ` is available in the ${contextLabel} module.`;
+    message += potentialSolutions;
+    return message;
+};
+export const INVALID_MIDDLEWARE_MESSAGE = (text, name) => `The middleware doesn't provide the 'use' method (${name})`;
+export const UNDEFINED_FORWARDREF_MESSAGE = (scope) => `Nest cannot create the module instance. Often, this is because of a circular dependency between modules. Use forwardRef() to avoid it.
+
+(Read more: https://docs.nestjs.com/fundamentals/circular-dependency)
+Scope [${stringifyScope(scope)}]
+`;
+export const INVALID_MODULE_MESSAGE = (parentModule, index, scope, receivedValue) => {
+    const parentModuleName = parentModule?.name || 'module';
+    let formattedValue;
+    let receivedType;
+    if (receivedValue === null) {
+        formattedValue = 'null';
+        receivedType = 'null';
+    }
+    else if (typeof receivedValue === 'string') {
+        formattedValue = `"${receivedValue}"`;
+        receivedType = 'string';
+    }
+    else {
+        formattedValue = String(receivedValue);
+        receivedType = typeof receivedValue;
+    }
+    return `Nest cannot create the ${parentModuleName} instance.
+Received an unexpected value at index [${index}] of the ${parentModuleName} "imports" array.
+The received value \`${formattedValue}\` is of type "${receivedType}".
+
+Scope [${stringifyScope(scope)}]`;
+};
+export const USING_INVALID_CLASS_AS_A_MODULE_MESSAGE = (metatypeUsedAsAModule, scope, classKind) => {
+    const metatypeNameQuote = `"${getInstanceName(metatypeUsedAsAModule)}"`;
+    let hint;
+    switch (classKind) {
+        case 'controller':
+            hint = `${metatypeNameQuote} is decorated with @Controller() and cannot appear in the "imports" array of a module. Please move ${metatypeNameQuote} to the "controllers" array of the importing module instead.`;
+            break;
+        case 'provider':
+            hint = `${metatypeNameQuote} is decorated with @Injectable() and cannot appear in the "imports" array of a module. Please move ${metatypeNameQuote} to the "providers" array of the importing module instead.`;
+            break;
+        case 'filter':
+            hint = `${metatypeNameQuote} is decorated with @Catch() and cannot appear in the "imports" array of a module. Please move ${metatypeNameQuote} to the "providers" array (using the APP_FILTER token to apply it globally) or apply it via @UseFilters() instead.`;
+            break;
+    }
+    return `${hint}
+
+Scope [${stringifyScope(scope)}]
+`;
+};
+export const UNDEFINED_MODULE_MESSAGE = (parentModule, index, scope) => {
+    const parentModuleName = parentModule?.name || 'module';
+    return `Nest cannot create the ${parentModuleName} instance.
+The module at index [${index}] of the ${parentModuleName} "imports" array is undefined.
+
+Potential causes:
+- A circular dependency between modules. Use forwardRef() to avoid it. Read more: https://docs.nestjs.com/fundamentals/circular-dependency
+- The module at index [${index}] is of type "undefined". Check your import statements and the type of the module.
+
+Scope [${stringifyScope(scope)}]`;
+};
+export const UNKNOWN_EXPORT_MESSAGE = (token = 'item', module) => {
+    token = isSymbol(token) ? token.toString() : token;
+    return `Nest cannot export a provider/module that is not a part of the currently processed module (${module}). Please verify whether the exported ${token} is available in this particular context.
+
+Possible Solutions:
+- Is ${token} part of the relevant providers/imports within ${module}?
+
+For more common dependency resolution issues, see: https://docs.nestjs.com/faq/common-errors
+`;
+};
+export const INVALID_CLASS_MESSAGE = (text, value) => `ModuleRef cannot instantiate class (${value} is not constructable).`;
+export const INVALID_CLASS_SCOPE_MESSAGE = (text, name) => `${name || 'This class'} is marked as a scoped provider. Request and transient-scoped providers can't be used in combination with "get()" method. Please, use "resolve()" instead.`;
+export const UNKNOWN_REQUEST_MAPPING = (metatype) => {
+    const className = metatype.name;
+    return className
+        ? `An invalid controller has been detected. "${className}" does not have the @Controller() decorator but it is being listed in the "controllers" array of some module.`
+        : `An invalid controller has been detected. Perhaps, one of your controllers is missing the @Controller() decorator.`;
+};
+export const ROUTE_CONFLICT_MESSAGE = (messages) => [
+    'Conflicting HTTP routes detected:',
+    ...messages.map(message => `  - ${message}`),
+    `Adjust route declarations or relax the 'routeConflictPolicy' option passed to NestFactory.create() to allow the application to start.`,
+].join('\n');
+export const DUPLICATE_ROUTE_MESSAGE = (method, path, firstHandlerLabel, secondHandlerLabel) => `Duplicate route: ${method} ${path} is registered by both ${firstHandlerLabel} and ${secondHandlerLabel}.`;
+export const SHADOWED_ROUTE_MESSAGE = (method, shadowedPath, shadowedHandlerLabel, winnerPath, winnerHandlerLabel) => `Route ${method} ${shadowedPath} (${shadowedHandlerLabel}) is shadowed by ${method} ${winnerPath} (${winnerHandlerLabel}). The first-registered route will match all matching requests on order-sensitive adapters.`;
+export const INVALID_MIDDLEWARE_CONFIGURATION = `An invalid middleware configuration has been passed inside the module 'configure()' method.`;
+export const UNHANDLED_RUNTIME_EXCEPTION = `Unhandled Runtime Exception.`;
+export const INVALID_EXCEPTION_FILTER = `Invalid exception filters (@UseFilters()).`;
+export const MICROSERVICES_PACKAGE_NOT_FOUND_EXCEPTION = `Unable to load @nestjs/microservices package. (Please make sure that it's already installed.)`;

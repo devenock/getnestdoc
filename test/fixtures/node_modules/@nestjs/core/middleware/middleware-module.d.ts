@@ -1,0 +1,32 @@
+import { type HttpServer } from '@nestjs/common';
+import { ApplicationConfig } from '../application-config.js';
+import { NestContainer } from '../injector/container.js';
+import { Injector } from '../injector/injector.js';
+import { Module } from '../injector/module.js';
+import { GraphInspector } from '../inspector/graph-inspector.js';
+import { MiddlewareContainer } from './container.js';
+import { type MiddlewareConfiguration, type RouteInfo, type NestApplicationContextOptions } from '@nestjs/common/internal';
+export declare class MiddlewareModule<TAppOptions extends NestApplicationContextOptions = NestApplicationContextOptions> {
+    private readonly routerProxy;
+    private readonly exceptionFiltersCache;
+    private readonly logger;
+    private injector;
+    private routerExceptionFilter;
+    private routesMapper;
+    private resolver;
+    private container;
+    private httpAdapter;
+    private graphInspector;
+    private appOptions;
+    private routeInfoPathExtractor;
+    register(middlewareContainer: MiddlewareContainer, container: NestContainer, config: ApplicationConfig, injector: Injector, httpAdapter: HttpServer, graphInspector: GraphInspector, options: TAppOptions): Promise<void>;
+    resolveMiddleware(middlewareContainer: MiddlewareContainer, modules: Map<string, Module>): Promise<void>;
+    loadConfiguration(middlewareContainer: MiddlewareContainer, moduleRef: Module, moduleKey: string): Promise<void>;
+    registerMiddleware(middlewareContainer: MiddlewareContainer, applicationRef: any): Promise<void>;
+    registerMiddlewareConfig(middlewareContainer: MiddlewareContainer, config: MiddlewareConfiguration, moduleKey: string, applicationRef: any): Promise<void>;
+    registerRouteMiddleware(middlewareContainer: MiddlewareContainer, routeInfo: RouteInfo, config: MiddlewareConfiguration, moduleKey: string, applicationRef: any): Promise<void>;
+    private bindHandler;
+    private createProxy;
+    private registerHandler;
+    private getContextId;
+}
