@@ -54,3 +54,12 @@ const OFFICIAL_SCOPE = new Set<string>(OFFICIAL_SCOPE_NAMES);
 export function expandPackageShorthand(name: string): string {
   return OFFICIAL_SCOPE.has(name) ? `@nestjs/${name}` : name;
 }
+
+// Inverse of the above, for display only (e.g. the package index's own
+// "nest-doc common.<name>" hint, SPEC.md §4.2) — "@nestjs/common" -> "common"
+// when it's in the official scope table, else the full scoped name unchanged.
+export function shorthandFor(packageName: string): string {
+  const match = /^@nestjs\/(.+)$/.exec(packageName);
+  if (match && OFFICIAL_SCOPE.has(match[1]!)) return match[1]!;
+  return packageName;
+}
