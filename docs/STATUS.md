@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 1 done — guide corpus builds and tests pass against a pinned fixture snapshot.
+**Phase:** 2 done — alias table builds, internal links resolve, `@see` coverage at 100%.
 
 ---
 
@@ -14,7 +14,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 |---|---|---|
 | 0 | Skeleton + benchmark harness | done |
 | 1 | Guide corpus → `guides.json` | done |
-| 2 | Alias table → `aliases.json` | not started |
+| 2 | Alias table → `aliases.json` | done |
 | 3 | Terminal renderer | not started |
 | 4 | Guide command — **ship `0.1.0`** | not started |
 | 5 | Package resolution | not started |
@@ -49,6 +49,9 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | CLI framework? | Plain `commander` (Option B) | ADR-0005 |
 | Only HTML `<table>`s in the corpus? | No — 45 more as GFM pipe tables, 80 total | ARCHITECTURE §6.1, Phase 1 |
 | Heading anchor algorithm? | `text.replace(/\s/g, '-').toLowerCase()`, verified against `header-anchor.directive.ts` in the docs repo — no punctuation stripping | Phase 1 |
+| Component name kebab-case → filename? | No — wrong for 29/145 real routes. Use the component's own import path directory instead (144/145) | ARCHITECTURE §6.2, Phase 2 |
+| `fundamentals/custom-providers` alias target? | `fundamentals/dependency-injection`, not itself — component/file renamed upstream since SPEC.md was written | SPEC.md §2, Phase 2 |
+| `@see` URL resolution via the alias table? | 100% (47/47) against real `@nestjs/common@12.0.1`, vs. 74.5% (35/47) naive | Phase 2 |
 
 ---
 
