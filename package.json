@@ -1,0 +1,36 @@
+{
+  "name": "getnestdoc",
+  "version": "0.1.0",
+  "description": "A terminal documentation reader for NestJS.",
+  "type": "module",
+  "bin": {
+    "nest-doc": "./dist/nest-doc.mjs"
+  },
+  "files": [
+    "dist",
+    "data"
+  ],
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "build": "node scripts/bundle.ts",
+    "test": "node --test",
+    "bench": "node scripts/bench.ts"
+  },
+  "//typescript": "Pinned exact, no caret. 7.x is the native Go port and removes the JS Compiler API (createSourceFile, createProgram). See docs/0001-pin-typescript-6.md.",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.9.1",
+    "eslint-plugin-import-x": "^4.17.1",
+    "typescript-eslint": "^8.68.0"
+  }
+}
