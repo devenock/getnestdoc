@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 2 done — alias table builds, internal links resolve, `@see` coverage at 100%.
+**Phase:** 3 done — terminal renderer built, all 143 guides render clean at every width/colour combination tested.
 
 ---
 
@@ -15,7 +15,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 0 | Skeleton + benchmark harness | done |
 | 1 | Guide corpus → `guides.json` | done |
 | 2 | Alias table → `aliases.json` | done |
-| 3 | Terminal renderer | not started |
+| 3 | Terminal renderer | done |
 | 4 | Guide command — **ship `0.1.0`** | not started |
 | 5 | Package resolution | not started |
 | 6 | Symbol extraction | not started |
@@ -52,6 +52,9 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Component name kebab-case → filename? | No — wrong for 29/145 real routes. Use the component's own import path directory instead (144/145) | ARCHITECTURE §6.2, Phase 2 |
 | `fundamentals/custom-providers` alias target? | `fundamentals/dependency-injection`, not itself — component/file renamed upstream since SPEC.md was written | SPEC.md §2, Phase 2 |
 | `@see` URL resolution via the alias table? | 100% (47/47) against real `@nestjs/common@12.0.1`, vs. 74.5% (35/47) naive | Phase 2 |
+| Guide/GuideToken canonical type location? | `src/core/render/types.ts` — the renderer, not `scripts/`, owns the contract; build scripts import it back so there's one definition | Phase 3 |
+| Table column widths under pressure? | Fair-share redistribution, not uniform proportional scaling — short columns (e.g. "Type") keep their natural width instead of being squeezed as hard as the long "Description" column | Phase 3 |
+| Widest line across the real corpus? | 100 chars at a 100-char budget (a tightly-wrapped paragraph, not an overflow) — zero width violations across 143 guides × 3 widths × 2 colour modes | Phase 3 |
 
 ---
 
@@ -59,7 +62,7 @@ Record every benchmark here as phases land. A number not written down is a numbe
 
 **Latency headroom is generous, not thin.** ADR-0005 settled on plain `commander` (Option B), so the framework line item is ~46 ms rather than the ~97 ms of `nest-commander`, leaving well over the ~30 ms headroom the ADR costed for Option A. Every dependency added after Phase 0 still needs measuring — the CI benchmark is the guard, and it exists from Phase 0 for this reason.
 
-**Named re-exports are the likely silent bug.** Extraction that handles only `export *` finds 155 of 206 symbols and looks like it works. Phase 3 asserts the count.
+**Named re-exports are the likely silent bug.** Extraction that handles only `export *` finds 155 of 206 symbols and looks like it works. Phase 6 asserts the count (corrected from "Phase 3" — that's the terminal renderer, not extraction).
 
 **Docs repo restructure breaks the corpus build.** Fails at build time, never at runtime. Acceptable, but the build script needs an owner when it breaks.
 
