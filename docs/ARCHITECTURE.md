@@ -251,12 +251,20 @@ Pre-tokenising at build time means the runtime never runs a markdown parser over
 
 Guide URLs do not match filenames. `/providers` is served by `components.md`; `/fundamentals/injection-scopes` by `fundamentals/provider-scopes.md`. Naive path mapping resolves 35 of 47 `@see` URLs (74%).
 
-The mapping is machine-derivable from the docs repo's own Angular routes:
+The mapping is machine-derivable from the docs repo's own Angular routes — but not by kebab-casing the component class name, which was the original plan here. Verified against all 145 component routes in the real tree (Phase 2): kebab-casing the class name only matches the real filename in 116/145 (80%). Nested route files prefix class names to dodge identifier collisions — `microservices.routes.ts` and `websockets.routes.ts` both need a "Pipes" page, so they're `MicroservicesPipesComponent` / `WsPipesComponent` in code, which kebab-case to `microservices-pipes` / `ws-pipes`, neither of which exists. Both really just point at `pipes.md` in their own directory.
+
+The reliable signal is the component's own import path, not its name:
 
 ```ts
+// fundamentals.routes.ts
+import { ProviderScopesComponent } from './provider-scopes/provider-scopes.component';
+//                                       └─ this directory, relative to homepage/pages/,
+//                                          is the guide slug: fundamentals/provider-scopes
 { path: 'injection-scopes', component: ProviderScopesComponent }
-//        └─ URL slug                   └─ kebab-case → provider-scopes.md
+//        └─ URL slug (unrelated to the filename)
 ```
+
+Resolve the import specifier to a file path, drop the filename, and take the directory relative to `homepage/pages/` — 144/145 real routes resolve this way. The one that doesn't is `HomepageComponent`, the root layout shell (the only route with both `component` and inline `children`, correctly not a content page).
 
 Generate it; do not hand-maintain it. It then stays correct as the docs evolve, and it serves both `@see` resolution and internal `](/slug)` link rewriting.
 
