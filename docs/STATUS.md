@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 3 done — terminal renderer built, all 143 guides render clean at every width/colour combination tested.
+**Phase:** 4 done — `nest-doc <guide>` is a working, shippable command. 0.1.0 candidate.
 
 ---
 
@@ -16,7 +16,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 1 | Guide corpus → `guides.json` | done |
 | 2 | Alias table → `aliases.json` | done |
 | 3 | Terminal renderer | done |
-| 4 | Guide command — **ship `0.1.0`** | not started |
+| 4 | Guide command — **ship `0.1.0`** | done |
 | 5 | Package resolution | not started |
 | 6 | Symbol extraction | not started |
 | 7 | Cache | not started |
@@ -30,7 +30,7 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Phase | Command | Budget | Measured |
 |---|---|---|---|
 | 0 | `nest-doc --version` | 60 ms | 26.9 ms median / 54.1 ms p95 (linked binary, this machine) |
-| 4 | `nest-doc interceptors` | 150 ms | — |
+| 4 | `nest-doc interceptors` | 150 ms | 42-51 ms median across runs (linked binary, this machine) |
 | 7 | `nest-doc common.Injectable` (warm) | 150 ms | — |
 
 ## Settled
@@ -55,6 +55,11 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Guide/GuideToken canonical type location? | `src/core/render/types.ts` — the renderer, not `scripts/`, owns the contract; build scripts import it back so there's one definition | Phase 3 |
 | Table column widths under pressure? | Fair-share redistribution, not uniform proportional scaling — short columns (e.g. "Type") keep their natural width instead of being squeezed as hard as the long "Description" column | Phase 3 |
 | Widest line across the real corpus? | 100 chars at a 100-char budget (a tightly-wrapped paragraph, not an overflow) — zero width violations across 143 guides × 3 widths × 2 colour modes | Phase 3 |
+| Guide/AliasFile canonical type location? | `src/nest/guides/types.ts` and `src/nest/aliases.ts` — same reasoning as the token types: the runtime consumer owns the contract, build scripts import it back | Phase 4 |
+| Commander's default usage-error exit code? | 1 for every error (missing argument, unknown option) — indistinguishable from "not found". `exitOverride()` + remapping to exit 2 needed to match SPEC.md §5 | Phase 4 |
+| `concepts.ts` as a separate file? | No — "concept" lookups (`providers`) and alias-table lookups are the same table (`urlToSlug`); a separate file would just re-export it | ARCHITECTURE §3, Phase 4 |
+
+**0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output — all verified against the real linked binary, not just unit tests. Phase 9 (release) still needs to happen before actually publishing.
 
 ---
 
