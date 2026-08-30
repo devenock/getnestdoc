@@ -122,20 +122,25 @@ scripts/                        ← build time only, not shipped
 
 ### 4.1 Query classification
 
-One positional argument carries three possible meanings. Resolution order:
+One positional argument carries five possible meanings. Resolution order (SPEC.md §5, extended by ADR-0007):
 
 ```
-1. exact guide slug            "interceptors"        → guide
-2. exact concept alias         "providers"           → guide (components.md)
-3. package name                "@nestjs/common"      → package index
-4. package.symbol              "common.Injectable"   → symbol
-5. fuzzy match                 "intercepters"        → "did you mean interceptors?"
-6. miss                        → exit 1 with suggestions
+1. exact guide slug            "interceptors"          → guide
+2. exact concept alias         "providers"             → guide (components.md)
+3. scoped package              "@nestjs/common"        → package index
+4. package.symbol              "common.Injectable"     → symbol
+5. bare symbol / decorator     "@Get", "Get"            → symbol
+6. fuzzy match                 "intercepters"          → "did you mean interceptors?"
+7. miss                        → exit 1 with suggestions
 ```
 
-`--guide` and `--api` short-circuit to steps 1–2 or 3–4 respectively. Ambiguity (a name existing in both spaces) prints both headings and asks the user to disambiguate rather than guessing.
+`--guide` short-circuits to steps 1–2; `--api` to 3–5. Guides win ties *silently* — a bare word that could be either resolves to the guide by default (`nest-doc Module` → the guide; `--api` forces the decorator), because steps 1–2 run before 3–5 and simply match first. This isn't the same thing as ADR-0007's "ambiguous" case, which is narrower and concrete: a bare name that resolves to *more than one installed package* in the name index (`data/names.json`) — that's the one case that prints every option and exits 1 rather than guessing, per SPEC.md §2b. Verified against the real shipped index (10 packages, 606 names): zero such collisions today: this path exists for correctness, not because it currently fires.
+
+Query classification also has to decide, ahead of all of this, whether a dotted query is a package.symbol pair (step 4) before falling through to steps 3/5 — checked first and independent of a leading `@`, since `@nestjs/swagger.ApiProperty` and `common.Injectable` are the same shape. The split point is the *last* `.`, not the first: `platform-socket.io` is a real published package name (and a real shorthand-table entry) with a literal `.` in it, so `@nestjs/platform-socket.io.SomeExport` must keep the whole thing before the last dot as the package.
 
 The `common.X` shorthand expands `common` → `@nestjs/common` via a static table of the official scope. Unscoped names not in that table are treated as literal package names.
+
+**Disambiguating a leading `@`** (ADR-0007): a name containing `/` is a scoped package; a single capitalised word is a decorator; anything else (most commonly a lowercase word) is a usage error, exit 2 with a suggestion — there's no third meaning to guess at.
 
 ### 4.2 Finding the package
 

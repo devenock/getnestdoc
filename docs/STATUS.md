@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 7 done — extracted symbols are cached under `${XDG_CACHE_HOME:-~/.cache}/getnestdoc/`, keyed by package name + version. A warm `nest-doc common.Injectable` (58.9 ms median) lands within 5 ms of a guide lookup (59.6 ms median), skipping the `typescript` load entirely.
+**Phase:** 8 done — cross-linking (`See also`), the package index (`nest-doc @nestjs/common`), and bare symbol/decorator lookup (`nest-doc @Get`, `nest-doc Get`) all land. `nest-doc update` is the only networked command (verified: exactly 2 `fetch()` call sites in the whole bundle, both in the docs-repo fetch path). All query forms are within the 150 ms budget on this machine: package index 55.5 ms median warm / 252-270 ms cold, bare symbol 51.4 ms median warm.
 
 ---
 
@@ -20,7 +20,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 5 | Package resolution | done |
 | 6 | Symbol extraction | done |
 | 7 | Cache | done |
-| 8 | Cross-linking + package index + `@Decorator` lookup | not started |
+| 8 | Cross-linking + package index + `@Decorator` lookup | done |
 | 9 | Release | not started |
 
 ## Measurements
@@ -34,6 +34,12 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | 6 | Cold extraction, `@nestjs/common@12.0.1` (in-process, not a CLI spawn) | 207 ms (prior measurement, ADR-0002) | 35-42 ms across 5 runs, this machine |
 | 7 | `nest-doc common.Injectable` (cold, empty cache, CLI spawn) | — | 306 ms median across 5 fresh-cache runs (285-352 ms range), this machine |
 | 7 | `nest-doc common.Injectable` (warm) | within 5 ms of a guide lookup | 58.9 ms median / 62.0 ms p95, vs. 59.6 ms median for `nest-doc interceptors` — warm symbol lookup is as fast as a guide lookup |
+| 8 | `nest-doc --version` | 60 ms | 30.2 ms median / 34.8 ms p95 |
+| 8 | `nest-doc interceptors` | 150 ms | 45.3 ms median / 46.9 ms p95 |
+| 8 | `nest-doc common.Injectable` (warm) | 150 ms | 49.9 ms median / 53.3 ms p95 |
+| 8 | `nest-doc @nestjs/common` (package index, warm) | 150 ms | 55.5 ms median / 57.7 ms p95 |
+| 8 | `nest-doc @nestjs/common` (package index, cold) | — | 252-270 ms across 3 fresh-cache runs |
+| 8 | `nest-doc Get` (bare symbol, warm) | 150 ms | 51.4 ms median / 59.3 ms p95 |
 
 ## Settled
 
@@ -69,6 +75,14 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Does a static `import "typescript"` inside a module only reached via dynamic `import()` actually defer loading? | No — verified by 3 throwaway esbuild bundle experiments. ESM hoists and eagerly evaluates static imports of external packages at module-load time regardless of how the containing module is reached. Every `core/extract/` function had to be refactored to take `ts: typeof TS` as a parameter instead of statically importing it; only `typescript-loader.ts`'s single `await import("typescript")` actually defers the cost | Phase 7 |
 | Cache key collision risk across package versions? | None — `packageVersion` is part of the filename (`<name>@<version>.json`), so a package upgrade lands on a different file with no separate staleness check needed. Only the `CacheFile.version` *format* field needs an explicit mismatch check | Phase 7 |
 | Warm symbol lookup vs. guide lookup latency | 58.9 ms vs. 59.6 ms median — indistinguishable within run-to-run noise, confirming the cache read (not `typescript`) is the only cost on the warm path | Phase 7 |
+| `SymbolRecord.signature` for classes/interfaces with documented members | Was wrong since Phase 6, only surfaced when Phase 8 actually rendered raw signatures to a terminal: `node.getText()` excludes a node's own *leading* JSDoc but not JSDoc nested inside its own span — a class's members' doc comments came along for free. `BadGatewayException`'s signature was 1301 chars; stripping `/** */` blocks throughout brings it to 139. The render layer also now wraps the signature line — some (enums, larger interfaces) are still legitimately wide even after stripping | `core/extract/signature.ts`, Phase 8 |
+| Is a static `import x from "external-pkg"` in a module only reached via dynamic `import()` still hoisted, if that *middle* module has no further nesting? | Yes, confirmed by inspecting actual esbuild output (not just testing behavior): the external package's `import` statement is emitted as a real top-level ESM import in the bundle file itself — Node's loader runs it immediately on file load, regardless of whether the *code that uses it* is wrapped in a lazy `__esm()` init function. Only a literal `import()` **call expression** at the reference site is deferred; a static `import` declaration anywhere in the reachable module graph is not. This forced `nest/update/aliases-transform.ts` (typescript) and `nest/update/guides-transform.ts` (marked) through the same parameter-passing pattern as `core/extract/`, since `nest-doc update`'s logic now ships in the same bundle as everything else | Phase 8 |
+| Does `@nestjs/core` have exactly 17 public symbols, per ADR-0007's estimate? | No — 16, measured directly from the real fixture. ADR-0007's number was from an earlier, less precise pass; the measured number is what the tests assert, not the ADR's | Phase 8 |
+| Zero name collisions across the shipped name index? | Yes — 606 unique names across all 10 packages (the 9 `nestjs/nest` monorepo packages plus `swagger`), zero collisions, verified directly (not assumed from ADR-0007's narrower common/core/swagger-only check) | Phase 8, `scripts/build-names.ts` |
+| DECORATORS bucket in the package index — how to detect a "decorator" when `SymbolKind` has no such kind? | Signature-based heuristic: a `function` or `const` declaration whose signature matches `/Decorator\b/` (`ClassDecorator`, `MethodDecorator`, `PropertyDecorator`, `ParameterDecorator`, `CustomDecorator<...>`). Verified against all 420 real exports across common/core/swagger: 57+0+76 matches, zero false positives (checked every one by hand) | Phase 8, `nest/render-package-index.ts` |
+| `nest-doc Module` (no flag) — guide or symbol? | Guide, by design (`--api` forces the symbol) — but this exposed a real gap: no route in the live docs site ever links to `/module` (singular), only `/modules`, so the auto-derived alias table has no entry for it and the query wouldn't resolve at all without help. Fixed with a small, explicitly-curated single-entry supplement (`module` → `modules`) plus a case-insensitive fallback in `findGuide`, not a general singular/plural heuristic | ARCHITECTURE §4.1, Phase 8 |
+| What actually triggers SPEC.md's "ambiguous query, exits 1, lists both options"? | Not guide-vs-symbol overlap (that's resolved deterministically — guides win by running first in resolution order). It's specifically a bare name resolving to more than one *installed package* in the name index (SPEC.md §2b) — currently untriggered by the real shipped index (zero collisions), verified instead with a synthetic collision injected into a scratch copy of `data/names.json` | ARCHITECTURE §4.1, Phase 8 |
+| `nest-doc update` — only networked path? | Verified directly against the built bundle: exactly 2 `fetch()` call sites total, both inside `nest/update/fetch-docs-repo.ts`, both only reachable from the `update` subcommand's action handler | Phase 8 |
 
 **0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output — all verified against the real linked binary, not just unit tests. Phase 9 (release) still needs to happen before actually publishing.
 
