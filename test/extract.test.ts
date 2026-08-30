@@ -86,8 +86,11 @@ test("reports the extraction count and cold extraction time", () => {
   // isolation) dominates this number, not the extraction algorithm (~35-40 ms
   // once typescript is already loaded). That load is unavoidable on a cold
   // path and is exactly why Phase 7's cache matters: a warm lookup skips
-  // extractPackage — and therefore this cost — entirely. 400 ms is a generous
-  // sanity bound against run-to-run variance, not a tight budget; the number
-  // itself is what gets reported and compared against the 207 ms baseline.
-  assert.ok(extractionMs < 400, `extraction took ${extractionMs.toFixed(1)} ms — profile before continuing`);
+  // extractPackage — and therefore this cost — entirely. In isolation this
+  // measures 236-255 ms; observed as high as 401 ms when `npm test` runs
+  // every other file's CPU-bound work (other typescript loads, spawned CLI
+  // processes) concurrently on this machine. 800 ms clears that contention
+  // noise with room to spare; the number itself, not this bound, is what
+  // gets reported and compared against the 207 ms baseline.
+  assert.ok(extractionMs < 800, `extraction took ${extractionMs.toFixed(1)} ms — profile before continuing`);
 });
