@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import type TS from "typescript";
 import type { SymbolKind } from "./types.ts";
 
 // setParentNodes: true is required for node.getText()/getStart() to work
-// (ARCHITECTURE.md §5.1).
-export function parseSourceFile(filePath: string): ts.SourceFile {
+// (ARCHITECTURE.md §5.1). `ts` is passed in rather than imported here — see
+// typescript-loader.ts for why.
+export function parseSourceFile(ts: typeof TS, filePath: string): TS.SourceFile {
   const text = readFileSync(filePath, "utf8");
   return ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true);
 }
@@ -12,11 +13,11 @@ export function parseSourceFile(filePath: string): ts.SourceFile {
 export type DeclarationEntry = {
   name: string;
   kind: SymbolKind;
-  node: ts.Node;
+  node: TS.Node;
 };
 
-function isExported(node: ts.Node): boolean {
-  return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Export) !== 0;
+function isExported(ts: typeof TS, node: TS.Node): boolean {
+  return (ts.getCombinedModifierFlags(node as TS.Declaration) & ts.ModifierFlags.Export) !== 0;
 }
 
 // Named, exported top-level declarations in one file, keyed by the name as
@@ -25,11 +26,11 @@ function isExported(node: ts.Node): boolean {
 // implicitly ambient in a .d.ts (no `declare` keyword needed); functions/
 // classes/const/enum carry it explicitly — both forms pass the same
 // export-modifier check.
-export function getExportedDeclarations(sourceFile: ts.SourceFile): Map<string, DeclarationEntry> {
+export function getExportedDeclarations(ts: typeof TS, sourceFile: TS.SourceFile): Map<string, DeclarationEntry> {
   const declarations = new Map<string, DeclarationEntry>();
 
   for (const statement of sourceFile.statements) {
-    if (!isExported(statement)) continue;
+    if (!isExported(ts, statement)) continue;
 
     if (ts.isFunctionDeclaration(statement) && statement.name) {
       declarations.set(statement.name.text, { name: statement.name.text, kind: "function", node: statement });
@@ -69,7 +70,7 @@ export type ExportStatement =
   | { kind: "wildcard"; specifier: string }
   | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };
 
-export function getExportStatements(sourceFile: ts.SourceFile): ExportStatement[] {
+export function getExportStatements(ts: typeof TS, sourceFile: TS.SourceFile): ExportStatement[] {
   const statements: ExportStatement[] = [];
 
   for (const statement of sourceFile.statements) {

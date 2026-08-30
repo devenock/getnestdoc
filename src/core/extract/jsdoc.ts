@@ -1,7 +1,7 @@
-import ts from "typescript";
+import type TS from "typescript";
 import type { JsDocTag, SeeLink } from "./types.ts";
 
-function flattenComment(comment: string | ts.NodeArray<ts.JSDocComment> | undefined): string {
+function flattenComment(ts: typeof TS, comment: string | TS.NodeArray<TS.JSDocComment> | undefined): string {
   if (comment === undefined) return "";
   if (typeof comment === "string") return comment;
   return comment
@@ -24,9 +24,9 @@ function flattenComment(comment: string | ts.NodeArray<ts.JSDocComment> | undefi
 // "://x" as the comment. Verified against the real corpus: 9 of 164 @see
 // tags in @nestjs/common@12.0.1 hit this. Reconstructing name + comment
 // recovers the original text for every tag shape, including this one.
-function reconstructTagText(tag: ts.JSDocTag): string {
-  const namePart = (tag as { name?: ts.EntityName | ts.JSDocMemberName }).name;
-  return (namePart ? namePart.getText() : "") + flattenComment(tag.comment);
+function reconstructTagText(ts: typeof TS, tag: TS.JSDocTag): string {
+  const namePart = (tag as { name?: TS.EntityName | TS.JSDocMemberName }).name;
+  return (namePart ? namePart.getText() : "") + flattenComment(ts, tag.comment);
 }
 
 const SEE_BRACKET_LINK = /^\[([^\]]*)\]\(([^)]*)\)/;
@@ -58,13 +58,14 @@ const EMPTY_RESULT: JsDocResult = { doc: "", tags: [], see: [], isPublicApi: fal
 // `.tags[].tagName.text`, see filtered from tags, isPublic from a `publicApi`
 // tag's presence. `.jsDoc` isn't part of the public compiler API surface
 // (hence the cast) but is populated at parse time and stable across the
-// TypeScript versions this project has used.
-export function extractJsDoc(node: ts.Node): JsDocResult {
-  const jsDocNodes = (node as { jsDoc?: ts.JSDoc[] }).jsDoc;
+// TypeScript versions this project has used. `ts` is passed in rather than
+// imported here — see typescript-loader.ts for why.
+export function extractJsDoc(ts: typeof TS, node: TS.Node): JsDocResult {
+  const jsDocNodes = (node as { jsDoc?: TS.JSDoc[] }).jsDoc;
   if (!jsDocNodes || jsDocNodes.length === 0) return EMPTY_RESULT;
 
   const block = jsDocNodes[jsDocNodes.length - 1]!;
-  const doc = flattenComment(block.comment);
+  const doc = flattenComment(ts, block.comment);
 
   const tags: JsDocTag[] = [];
   const see: SeeLink[] = [];
@@ -75,10 +76,10 @@ export function extractJsDoc(node: ts.Node): JsDocResult {
 
     if (ts.isJSDocParameterTag(tag) || ts.isJSDocPropertyTag(tag)) {
       const paramName = tag.name.getText();
-      const comment = flattenComment(tag.comment);
+      const comment = flattenComment(ts, tag.comment);
       text = comment ? `${paramName} ${comment}` : paramName;
     } else {
-      text = reconstructTagText(tag);
+      text = reconstructTagText(ts, tag);
     }
 
     tags.push({ name: tagName, text });

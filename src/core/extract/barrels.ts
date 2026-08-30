@@ -4,8 +4,9 @@ import type { DeclarationEntry } from "./parse.ts";
 import { getExportedDeclarations, getExportStatements, parseSourceFile } from "./parse.ts";
 import { extractJsDoc } from "./jsdoc.ts";
 import { extractSignature } from "./signature.ts";
+import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
-import type ts from "typescript";
+import type TS from "typescript";
 
 // Specifiers are written with .js (ESM); rewrite to .d.ts, falling back to
 // <spec>/index.d.ts for directory specifiers (ARCHITECTURE.md §5.1).
@@ -16,8 +17,14 @@ export function resolveModuleSpecifier(fromDir: string, specifier: string): stri
   return join(fromDir, withoutExt, "index.d.ts");
 }
 
-function buildSymbolRecord(entry: DeclarationEntry, sourceFile: ts.SourceFile, filePath: string, packageRoot: string): SymbolRecord {
-  const { doc, tags, see, isPublicApi } = extractJsDoc(entry.node);
+function buildSymbolRecord(
+  ts: typeof TS,
+  entry: DeclarationEntry,
+  sourceFile: TS.SourceFile,
+  filePath: string,
+  packageRoot: string,
+): SymbolRecord {
+  const { doc, tags, see, isPublicApi } = extractJsDoc(ts, entry.node);
   const signature = extractSignature(entry.node, sourceFile);
   const { line } = sourceFile.getLineAndCharacterOfPosition(entry.node.getStart(sourceFile));
 
@@ -53,7 +60,11 @@ function buildSymbolRecord(entry: DeclarationEntry, sourceFile: ts.SourceFile, f
 // inherited 56-name filter through that wildcard would wrongly pull in
 // `HttpArgumentsHost` (and everything else those files export that was never
 // promoted to the package's public surface).
-export function extractPackage(entryFile: string): SymbolRecord[] {
+//
+// Async, and the only place `typescript` actually loads (typescript-loader.ts)
+// — ADR-0001: guide lookups never pay for it.
+export async function extractPackage(entryFile: string): Promise<SymbolRecord[]> {
+  const ts = await loadTypeScript();
   const packageRoot = dirname(entryFile);
   const visited = new Set<string>();
   const results: SymbolRecord[] = [];
@@ -62,16 +73,16 @@ export function extractPackage(entryFile: string): SymbolRecord[] {
     if (visited.has(filePath)) return;
     visited.add(filePath);
 
-    const sourceFile = parseSourceFile(filePath);
-    const declarations = getExportedDeclarations(sourceFile);
+    const sourceFile = parseSourceFile(ts, filePath);
+    const declarations = getExportedDeclarations(ts, sourceFile);
 
     for (const [name, entry] of declarations) {
       if (allowedNames !== "all" && !allowedNames.has(name)) continue;
-      results.push(buildSymbolRecord(entry, sourceFile, filePath, packageRoot));
+      results.push(buildSymbolRecord(ts, entry, sourceFile, filePath, packageRoot));
     }
 
     const fileDir = dirname(filePath);
-    for (const exportStatement of getExportStatements(sourceFile)) {
+    for (const exportStatement of getExportStatements(ts, sourceFile)) {
       const targetFile = resolveModuleSpecifier(fileDir, exportStatement.specifier);
 
       if (exportStatement.kind === "wildcard") {
