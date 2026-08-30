@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 6 done — symbol extraction gets exactly 206/206 exports from the real `@nestjs/common@12.0.1`, on the first full run. No CLI wiring yet (cache doesn't exist until Phase 7).
+**Phase:** 7 done — extracted symbols are cached under `${XDG_CACHE_HOME:-~/.cache}/getnestdoc/`, keyed by package name + version. A warm `nest-doc common.Injectable` (58.9 ms median) lands within 5 ms of a guide lookup (59.6 ms median), skipping the `typescript` load entirely.
 
 ---
 
@@ -19,7 +19,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 4 | Guide command — **ship `0.1.0`** | done |
 | 5 | Package resolution | done |
 | 6 | Symbol extraction | done |
-| 7 | Cache | not started |
+| 7 | Cache | done |
 | 8 | Cross-linking + package index + `@Decorator` lookup | not started |
 | 9 | Release | not started |
 
@@ -32,7 +32,8 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | 0 | `nest-doc --version` | 60 ms | 26.9 ms median / 54.1 ms p95 (linked binary, this machine) |
 | 4 | `nest-doc interceptors` | 150 ms | 42-51 ms median across runs (linked binary, this machine) |
 | 6 | Cold extraction, `@nestjs/common@12.0.1` (in-process, not a CLI spawn) | 207 ms (prior measurement, ADR-0002) | 35-42 ms across 5 runs, this machine |
-| 7 | `nest-doc common.Injectable` (warm) | 150 ms | — |
+| 7 | `nest-doc common.Injectable` (cold, empty cache, CLI spawn) | — | 306 ms median across 5 fresh-cache runs (285-352 ms range), this machine |
+| 7 | `nest-doc common.Injectable` (warm) | within 5 ms of a guide lookup | 58.9 ms median / 62.0 ms p95, vs. 59.6 ms median for `nest-doc interceptors` — warm symbol lookup is as fast as a guide lookup |
 
 ## Settled
 
@@ -65,6 +66,9 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Named-re-export filter propagation? | Must propagate through nested wildcards unchanged, not reset to "all" — `features/arguments-host.interface.d.ts` declares `ContextType`, `ArgumentsHost`, and `HttpArgumentsHost`, and only the first two are in root `index.d.ts`'s 56-name curated list. Resetting to "all" on each `export *` would wrongly pull `HttpArgumentsHost` in too | ARCHITECTURE §5.1, Phase 6 |
 | TypeScript's `@see` bare-URL JSDoc parsing? | `@see https://x` splits into `tag.name="https"` and `tag.comment="://x"` — a real parser quirk, not a bug in this project. 9 of 164 real `@see` tags hit it. Reconstructing `name + comment` recovers the full URL for every tag shape | Phase 6 |
 | Extraction result: 206/206 on first full run | Exactly 206 exports, 177 `isPublicApi`, `Injectable` preserves `InjectableOptions` and carries exactly 3 `@see` links — all four PROMPTS.md Phase 6 assertions passed without needing a fix-up pass, once the filter-propagation trap above was handled correctly from the start | Phase 6 |
+| Does a static `import "typescript"` inside a module only reached via dynamic `import()` actually defer loading? | No — verified by 3 throwaway esbuild bundle experiments. ESM hoists and eagerly evaluates static imports of external packages at module-load time regardless of how the containing module is reached. Every `core/extract/` function had to be refactored to take `ts: typeof TS` as a parameter instead of statically importing it; only `typescript-loader.ts`'s single `await import("typescript")` actually defers the cost | Phase 7 |
+| Cache key collision risk across package versions? | None — `packageVersion` is part of the filename (`<name>@<version>.json`), so a package upgrade lands on a different file with no separate staleness check needed. Only the `CacheFile.version` *format* field needs an explicit mismatch check | Phase 7 |
+| Warm symbol lookup vs. guide lookup latency | 58.9 ms vs. 59.6 ms median — indistinguishable within run-to-run noise, confirming the cache read (not `typescript`) is the only cost on the warm path | Phase 7 |
 
 **0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output — all verified against the real linked binary, not just unit tests. Phase 9 (release) still needs to happen before actually publishing.
 
