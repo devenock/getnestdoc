@@ -1,0 +1,25 @@
+import { HttpStatus } from '../enums/index.js';
+import { BadGatewayException, BadRequestException, ConflictException, ForbiddenException, GatewayTimeoutException, GoneException, HttpVersionNotSupportedException, ImATeapotException, InternalServerErrorException, MethodNotAllowedException, MisdirectedException, NotAcceptableException, NotFoundException, NotImplementedException, PayloadTooLargeException, PreconditionFailedException, RequestTimeoutException, ServiceUnavailableException, UnauthorizedException, UnprocessableEntityException, UnsupportedMediaTypeException, } from '../exceptions/index.js';
+export const HttpErrorByCode = {
+    [HttpStatus.BAD_GATEWAY]: BadGatewayException,
+    [HttpStatus.BAD_REQUEST]: BadRequestException,
+    [HttpStatus.CONFLICT]: ConflictException,
+    [HttpStatus.FORBIDDEN]: ForbiddenException,
+    [HttpStatus.GATEWAY_TIMEOUT]: GatewayTimeoutException,
+    [HttpStatus.GONE]: GoneException,
+    [HttpStatus.HTTP_VERSION_NOT_SUPPORTED]: HttpVersionNotSupportedException,
+    [HttpStatus.I_AM_A_TEAPOT]: ImATeapotException,
+    [HttpStatus.INTERNAL_SERVER_ERROR]: InternalServerErrorException,
+    [HttpStatus.METHOD_NOT_ALLOWED]: MethodNotAllowedException,
+    [HttpStatus.MISDIRECTED]: MisdirectedException,
+    [HttpStatus.NOT_ACCEPTABLE]: NotAcceptableException,
+    [HttpStatus.NOT_FOUND]: NotFoundException,
+    [HttpStatus.NOT_IMPLEMENTED]: NotImplementedException,
+    [HttpStatus.PAYLOAD_TOO_LARGE]: PayloadTooLargeException,
+    [HttpStatus.PRECONDITION_FAILED]: PreconditionFailedException,
+    [HttpStatus.REQUEST_TIMEOUT]: RequestTimeoutException,
+    [HttpStatus.SERVICE_UNAVAILABLE]: ServiceUnavailableException,
+    [HttpStatus.UNAUTHORIZED]: UnauthorizedException,
+    [HttpStatus.UNPROCESSABLE_ENTITY]: UnprocessableEntityException,
+    [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: UnsupportedMediaTypeException,
+};

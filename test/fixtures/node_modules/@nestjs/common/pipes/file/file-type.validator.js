@@ -1,0 +1,112 @@
+import { Logger } from '../../services/logger.service.js';
+import { FileValidator } from './file-validator.interface.js';
+const logger = new Logger('FileTypeValidator');
+/**
+ * Defines the built-in FileTypeValidator. It validates incoming files by examining
+ * their magic numbers using the file-type package, providing more reliable file type validation
+ * than just checking the mimetype string.
+ *
+ * @see [File Validators](https://docs.nestjs.com/techniques/file-upload#validators)
+ *
+ * @publicApi
+ */
+export class FileTypeValidator extends FileValidator {
+    buildErrorMessage(file) {
+        const { errorMessage, ...config } = this.validationOptions;
+        if (errorMessage) {
+            return typeof errorMessage === 'function'
+                ? errorMessage({ file, config })
+                : errorMessage;
+        }
+        /**
+         * If the file buffer is not available, and fallbackToMimetype is not enabled,
+         * we cannot perform magic number validation,
+         * so we return a specific error message indicating
+         * that validation could not be performed due to missing buffer.
+         */
+        if (file?.mimetype &&
+            !file.buffer &&
+            !this.validationOptions?.fallbackToMimetype &&
+            !this.validationOptions?.skipMagicNumbersValidation) {
+            return `Validation failed (file buffer is not available; file type validation could not be performed; expected type is ${this.validationOptions.fileType})`;
+        }
+        if (file?.mimetype) {
+            const baseMessage = `Validation failed (current file type is ${file.mimetype}, expected type is ${this.validationOptions.fileType})`;
+            /**
+             * If fallbackToMimetype is enabled, this means the validator failed to detect the file type
+             * via magic number inspection (e.g. due to an unknown or too short buffer),
+             * and instead used the mimetype string provided by the client as a fallback.
+             *
+             * This message clarifies that fallback logic was used, in case users rely on file signatures.
+             */
+            if (this.validationOptions.fallbackToMimetype) {
+                return `${baseMessage} - magic number detection failed, used mimetype fallback`;
+            }
+            return baseMessage;
+        }
+        return `Validation failed (expected type is ${this.validationOptions.fileType})`;
+    }
+    async isValid(file) {
+        if (!this.validationOptions) {
+            return true;
+        }
+        const isFileValid = !!file && 'mimetype' in file;
+        // Skip magic number validation if set
+        if (this.validationOptions.skipMagicNumbersValidation) {
+            return isFileValid && this.matchesFileType(file.mimetype);
+        }
+        if (!isFileValid)
+            return false;
+        if (!file.buffer) {
+            if (this.validationOptions.fallbackToMimetype) {
+                return this.matchesFileType(file.mimetype);
+            }
+            return false;
+        }
+        try {
+            const { fileTypeFromBuffer } = await import('file-type');
+            const fileType = await fileTypeFromBuffer(file.buffer);
+            if (fileType) {
+                if (this.validationOptions.overrideMimeType) {
+                    file.mimetype = fileType.mime;
+                }
+                // Match detected mime type against allowed type
+                return this.matchesFileType(fileType.mime);
+            }
+            /**
+             * Fallback logic: If file-type cannot detect magic number (e.g. file too small),
+             * Optionally fall back to mimetype string for compatibility.
+             * This is useful for plain text, CSVs, or files without recognizable signatures.
+             */
+            if (this.validationOptions.fallbackToMimetype) {
+                return this.matchesFileType(file.mimetype);
+            }
+            return false;
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            // Check for common ESM loading issues
+            if (errorMessage.includes('ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING') ||
+                errorMessage.includes('Cannot find module') ||
+                errorMessage.includes('ERR_MODULE_NOT_FOUND')) {
+                logger.warn(`Failed to load the "file-type" package for magic number validation. ` +
+                    `If you are using Jest, run it with NODE_OPTIONS="--experimental-vm-modules". ` +
+                    `Error: ${errorMessage}`);
+            }
+            // Fallback to mimetype if enabled
+            if (this.validationOptions.fallbackToMimetype) {
+                return this.matchesFileType(file.mimetype);
+            }
+            return false;
+        }
+    }
+    matchesFileType(mimetype) {
+        const { fileType } = this.validationOptions;
+        // A string is coerced into a RegExp by `String#match`, so MIME types holding
+        // regex metacharacters (the `+` in `image/svg+xml`) never match themselves.
+        if (typeof fileType === 'string' && mimetype === fileType) {
+            return true;
+        }
+        return !!mimetype.match(fileType);
+    }
+}

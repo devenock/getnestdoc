@@ -1,0 +1,17 @@
+import { MODULE_METADATA as metadataConstants } from '../constants.js';
+export const INVALID_MODULE_CONFIG_MESSAGE = (text, property) => `Invalid property '${property}' passed into the @Module() decorator.`;
+const metadataKeys = [
+    metadataConstants.IMPORTS,
+    metadataConstants.EXPORTS,
+    metadataConstants.CONTROLLERS,
+    metadataConstants.PROVIDERS,
+];
+export function validateModuleKeys(keys) {
+    const validateKey = (key) => {
+        if (metadataKeys.includes(key)) {
+            return;
+        }
+        throw new Error(INVALID_MODULE_CONFIG_MESSAGE `${key}`);
+    };
+    keys.forEach(validateKey);
+}

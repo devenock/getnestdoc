@@ -30,3 +30,28 @@ count rather than silently producing a wrong `data/guides.json` — this snapsho
 does not need to be re-pinned just because upstream moved on; it needs to be
 re-pinned only if the transform itself changes and the fixtures no longer
 exercise what they're meant to.
+
+## node_modules/
+
+Real packages via `npm pack` + extract, not hand-written `.d.ts` stubs (TESTING.md
+§Fixtures). Used by `test/resolve.test.ts` (Phase 5). `.gitignore` blanket-excludes
+`node_modules/` everywhere else in the repo; `!test/fixtures/node_modules/**`
+carves this one back in.
+
+| Directory | Package@version | Entry resolution case |
+|---|---|---|
+| `@nestjs/common/` | `@nestjs/common@12.0.1` | 3 — `exports["."]` present, no `types` condition; sibling-infer `./index.js` → `./index.d.ts` |
+| `@nestjs/common-11/` | `@nestjs/common@11.2.3` | 3 — **no `exports` map at all**, no `main` either; falls all the way to the implicit `./index.js` default before sibling-inferring `.d.ts` |
+| `@nestjs/common-10/` | `@nestjs/common@10.4.22` | 3 — same shape as 11.2.3 |
+| `typed-legacy/` | `picocolors@1.0.1` | 1 — explicit top-level `"types": "./picocolors.d.ts"`, no `exports` map to even consider |
+| `untyped/` | `is-thirteen@2.0.0` | none resolve — no `types`/`typings`/`exports`, no `.d.ts` anywhere in the package, no `@types/is-thirteen` published. Exit 3. |
+
+**Finding:** ARCHITECTURE.md §4.3 describes case 3 as "exports map without a
+types condition → sibling inference," measured against 12.0.1 only. Verified
+against the real 10.4.22 and 11.2.3 tarballs (not `npm view`, which computes a
+misleading `types` value even when the raw `package.json` has none — always
+check the actual downloaded tarball): neither has an `exports` map *or* a
+`main` field at all. Node/TypeScript's implicit default (`./index.js`) has to
+run first before the same `.js` → `.d.ts` sibling inference applies. Same
+resolution case in spirit, but the resolver needs the main-or-default fallback
+as part of it, not just "read `exports["."]`" — see `core/resolve/entry-types.ts`.

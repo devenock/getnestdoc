@@ -1,0 +1,14 @@
+export declare const isUndefined: (obj: unknown) => obj is undefined;
+export declare const isObject: (fn: unknown) => fn is object;
+export declare const isPlainObject: (fn: unknown) => fn is object;
+export declare const addLeadingSlash: (path?: string) => string;
+export declare const normalizePath: (path?: string) => string;
+export declare const stripEndSlash: (path: string) => string;
+export declare const isFunction: (val: unknown) => val is Function;
+export declare const isString: (val: unknown) => val is string;
+export declare const isNumber: (val: unknown) => val is number;
+export declare const isConstructor: (val: unknown) => boolean;
+export declare const isNil: (val: unknown) => val is null | undefined;
+export declare const isEmpty: (value: unknown) => boolean;
+export declare const isEmptyArray: (array: unknown) => boolean;
+export declare const isSymbol: (val: unknown) => val is symbol;
