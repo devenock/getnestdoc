@@ -1,8 +1,8 @@
 # Architecture
 
-How `getnestdoc` works, end to end. Read `PROBLEM.md` first for why; this document is the how.
+How `getnestdoc` works, end to end. Read the README's "Why" section first for the motivation; this document is the how.
 
-Every number here was measured. See `PROBLEM.md` § Verified findings.
+Every number here was measured, not assumed — see `STATUS.md` for the full log of findings and measurements as they landed.
 
 ---
 
@@ -72,7 +72,7 @@ Guide lookups never touch the filesystem beyond loading one bundled JSON. Symbol
 
 ## 3. Module layout
 
-The `core` / `nest` seam from `PROBLEM.md`, made concrete.
+The `core` / `nest` seam, made concrete: `core/` is the generic, extractable engine; `nest/` is Nest-specific knowledge built on top of it.
 
 ```
 src/
