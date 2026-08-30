@@ -1,7 +1,2 @@
-// Mirrors SPEC.md §2 exactly. Build-time only, see ARCHITECTURE.md §3.
-export type AliasFile = {
-  version: 1;
-  generatedAt: string;
-  sourceCommit: string;
-  urlToSlug: Record<string, string>;
-};
+// Defined canonically in src/nest/aliases.ts, the runtime consumer.
+export type { AliasFile } from "../../src/nest/aliases.ts";
