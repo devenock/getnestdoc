@@ -28,7 +28,12 @@ const program = createProgram(DATA_DIR);
 program.exitOverride();
 
 try {
-  program.parse(process.argv);
+  // parseAsync, not parse: the action handler is async (a symbol lookup may
+  // need to extract and cache), and parseAsync is what actually awaits it —
+  // plain parse() would let main() return while the lookup is still in
+  // flight, and an error thrown after that point would become an unhandled
+  // rejection instead of landing in this catch.
+  await program.parseAsync(process.argv);
 } catch (err) {
   if (err instanceof CommanderError) {
     if (err.code === "commander.version" || err.code === "commander.helpDisplayed") {
