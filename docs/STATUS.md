@@ -2,7 +2,7 @@
 
 Current state and what's next. Ordered by what unblocks the most.
 
-**Phase:** 4 done — `nest-doc <guide>` is a working, shippable command. 0.1.0 candidate.
+**Phase:** 5 done — package resolution locates entry `.d.ts` files for real Nest 10/11/12 packages. No CLI wiring yet (extraction doesn't exist until Phase 6).
 
 ---
 
@@ -17,7 +17,7 @@ Build prompts for every phase are in `PROMPTS.md`. Contracts are in `SPEC.md`; v
 | 2 | Alias table → `aliases.json` | done |
 | 3 | Terminal renderer | done |
 | 4 | Guide command — **ship `0.1.0`** | done |
-| 5 | Package resolution | not started |
+| 5 | Package resolution | done |
 | 6 | Symbol extraction | not started |
 | 7 | Cache | not started |
 | 8 | Cross-linking + package index + `@Decorator` lookup | not started |
@@ -58,6 +58,9 @@ Record every benchmark here as phases land. A number not written down is a numbe
 | Guide/AliasFile canonical type location? | `src/nest/guides/types.ts` and `src/nest/aliases.ts` — same reasoning as the token types: the runtime consumer owns the contract, build scripts import it back | Phase 4 |
 | Commander's default usage-error exit code? | 1 for every error (missing argument, unknown option) — indistinguishable from "not found". `exitOverride()` + remapping to exit 2 needed to match SPEC.md §5 | Phase 4 |
 | `concepts.ts` as a separate file? | No — "concept" lookups (`providers`) and alias-table lookups are the same table (`urlToSlug`); a separate file would just re-export it | ARCHITECTURE §3, Phase 4 |
+| Which resolution case do Nest 10/11/12 actually take? | All three land on case 3, but not the same way. 12.0.1 has an `exports` map with no `types` condition (matches ARCHITECTURE §4.3 exactly). 11.2.3 and 10.4.22 have **neither an `exports` map nor a `main` field at all** — nothing for the documented "sibling-infer from `exports["."]`" to read. Node/TS's implicit `./index.js` default has to resolve first | ARCHITECTURE §4.3, Phase 5 |
+| Exit code for "package ships no types"? | 3, not 1 — ARCHITECTURE §10's failure-modes table said exit 1, contradicting SPEC.md §5's own exit code table (and PROMPTS.md's explicit Phase 5 instruction). Corrected | ARCHITECTURE §10, Phase 5 |
+| `common.X` official-scope table? | 33 packages, built from two verified sources: the `nestjs/nest` monorepo's `packages/` directory (9) plus every `@nestjs/*` string found in real guide code samples (24 more, cross-checked against npm) — not guessed | Phase 5 |
 
 **0.1.0 readiness:** `nest-doc <slug>`, alias resolution, fuzzy "did you mean" suggestions, `--js`, correct exit codes (0/1/2), zero-escape-code piped output — all verified against the real linked binary, not just unit tests. Phase 9 (release) still needs to happen before actually publishing.
 
