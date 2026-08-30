@@ -3,50 +3,11 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { spawnSync } from "node:child_process";
+import { fetchAndExtractRepo, fetchSourceCommit } from "./lib/fetch-docs-repo.ts";
 import { transformMarkdown } from "./lib/guides-transform.ts";
 import type { CodeToken, Guide, GuidesFile } from "./lib/guides-types.ts";
 
-const REPO = "nestjs/docs.nestjs.com";
-const BRANCH = "master";
 const EXPECTED_GUIDE_COUNT = 143;
-
-async function fetchSourceCommit(): Promise<string> {
-  const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${BRANCH}`, {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-  if (!res.ok) {
-    throw new Error(`GitHub API request for commit sha failed: ${res.status} ${res.statusText}`);
-  }
-  const data = (await res.json()) as { sha: string };
-  return data.sha;
-}
-
-async function fetchAndExtractRepo(destDir: string): Promise<string> {
-  const res = await fetch(`https://codeload.github.com/${REPO}/tar.gz/${BRANCH}`);
-  if (!res.ok) {
-    throw new Error(`Tarball fetch failed: ${res.status} ${res.statusText}`);
-  }
-
-  const tarPath = join(destDir, "docs.tar.gz");
-  writeFileSync(tarPath, Buffer.from(await res.arrayBuffer()));
-
-  const result = spawnSync("tar", ["xzf", tarPath, "-C", destDir]);
-  if (result.error) {
-    throw new Error(`Failed to run tar: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    throw new Error(`tar exited ${result.status}: ${result.stderr.toString()}`);
-  }
-
-  const root = readdirSync(destDir).find(
-    (entry) => entry.startsWith("docs.nestjs.com-") && statSync(join(destDir, entry)).isDirectory(),
-  );
-  if (!root) {
-    throw new Error(`Could not find extracted repo root under ${destDir}`);
-  }
-  return join(destDir, root);
-}
 
 function walkMarkdownFiles(dir: string): string[] {
   const out: string[] = [];
@@ -66,7 +27,7 @@ async function main(): Promise<void> {
   const tmpDir = mkdtempSync(join(tmpdir(), "getnestdoc-guides-"));
 
   try {
-    console.log(`Fetching source commit sha for ${REPO}#${BRANCH}...`);
+    console.log("Fetching source commit sha for nestjs/docs.nestjs.com#master...");
     const sourceCommit = await fetchSourceCommit();
 
     console.log("Fetching and extracting docs tarball...");
