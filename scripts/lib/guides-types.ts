@@ -1,7 +1,12 @@
-import type { MarkedToken } from "marked";
+// The token shapes (Heading, CodeToken, TableToken, ImageToken,
+// InternalLinkToken, GuideToken) are defined once, canonically, in
+// src/core/render/types.ts — the renderer that actually consumes them — and
+// re-exported here so scripts/build-guides.ts produces data conforming to
+// exactly the same contract. Guide/GuidesFile are build-output-specific and
+// stay here.
+export type { CodeToken, GuideToken, Heading, ImageToken, InternalLinkToken, TableToken } from "../../src/core/render/types.ts";
+import type { GuideToken, Heading } from "../../src/core/render/types.ts";
 
-// Mirrors SPEC.md §1 exactly. This is the build-time half of the contract;
-// nothing here is shipped (scripts/ is build-time only, see ARCHITECTURE.md §3).
 export type GuidesFile = {
   version: 1;
   generatedAt: string;
@@ -16,44 +21,3 @@ export type Guide = {
   headings: Heading[];
   tokens: GuideToken[];
 };
-
-export type Heading = {
-  depth: number;
-  text: string;
-  anchor: string;
-  tokenIndex: number;
-};
-
-export type CodeToken = {
-  type: "code";
-  lang: string;
-  filename?: string;
-  ts: string;
-  js?: string;
-};
-
-export type TableToken = {
-  type: "table";
-  header: string[];
-  rows: string[][];
-  align: ("left" | "right" | "center" | null)[];
-};
-
-export type ImageToken = {
-  type: "image";
-  alt: string;
-  src: string;
-};
-
-export type InternalLinkToken = {
-  type: "internalLink";
-  text: string;
-  slug: string;
-  anchor?: string;
-};
-
-// marked token types pass through unchanged except these four, which replace
-// them. Phase 1 does not produce InternalLinkToken yet — that's Phase 2, once
-// the alias table exists to resolve `](/slug)` links. It's part of the union
-// now so Phase 2 doesn't need to touch this file.
-export type GuideToken = MarkedToken | CodeToken | TableToken | ImageToken | InternalLinkToken;
