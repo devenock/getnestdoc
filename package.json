@@ -2,6 +2,7 @@
   "name": "getnestdoc",
   "version": "0.1.0",
   "description": "A terminal documentation reader for NestJS.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "nest-doc": "./dist/nest-doc.mjs"
