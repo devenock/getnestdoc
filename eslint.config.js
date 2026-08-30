@@ -10,8 +10,7 @@ export default tseslint.config(
     files: ["src/**/*.ts"],
     plugins: { "import-x": importPlugin },
     rules: {
-      // core/ is the extractable generic engine; nest/ holds Nest-specific
-      // knowledge. See ARCHITECTURE.md §3.
+      // core/ is the extractable generic engine; nest/ holds Nest-specific knowledge (ARCHITECTURE.md §3).
       "import-x/no-restricted-paths": [
         "error",
         {

@@ -1,7 +1,4 @@
-// Small hand-written Levenshtein for "did you mean?" suggestions
-// (SPEC.md §4.4, PROMPTS.md Phase 4) — no dependency. Generic (works on any
-// candidate string list), so it lives in core/, reusable for guide slugs now
-// and symbol/export names once Phase 6 exists.
+// Hand-written Levenshtein for "did you mean?" suggestions (SPEC.md §4.4) — generic over any candidate string list, so it lives in core/.
 
 function levenshtein(a: string, b: string): number {
   const m = a.length;
@@ -28,8 +25,7 @@ function levenshtein(a: string, b: string): number {
   return previous[n]!;
 }
 
-// A typo-level distance threshold that scales with query length, so a short
-// query needs a near-exact match while a long one tolerates a few edits.
+// Scales with query length: a short query needs a near-exact match, a long one tolerates a few edits.
 function maxDistanceFor(query: string): number {
   return Math.max(2, Math.floor(query.length * 0.34));
 }

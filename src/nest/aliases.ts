@@ -1,9 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Mirrors SPEC.md §2. Defined here (not scripts/lib/) because this is the
-// runtime consumer — scripts/lib/aliases-types.ts imports it back so build
-// and runtime share one definition, same as src/nest/guides/types.ts.
+// Mirrors SPEC.md §2 — defined here, not scripts/lib/, since this is the runtime consumer.
 export type AliasFile = {
   version: 1;
   generatedAt: string;

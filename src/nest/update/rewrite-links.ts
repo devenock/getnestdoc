@@ -1,14 +1,7 @@
 import type { InternalLinkToken } from "../../core/render/types.ts";
 
-// A guide's internal links appear in two forms in the real corpus: relative
-// (`/fundamentals/injection-scopes`, the SPEC.md-documented form) and absolute
-// (`https://docs.nestjs.com/providers#dependency-injection`) — both resolve
-// through the same alias table plus a direct-slug fallback (a URL segment can
-// already be a real slug with no distinct route path, e.g. `/guards`). Both
-// forms resolve 100% against the real corpus (188/188 internal-looking hrefs),
-// so both are worth turning into runnable `nest-doc <slug>` references rather
-// than leaving the absolute form as a inert external-looking URL.
-export function resolveInternalHref(
+// Internal links appear as both relative and absolute (docs.nestjs.com) URLs in the real corpus — both resolve through the same alias table plus a direct-slug fallback, 100% (188/188 real internal-looking hrefs).
+function resolveInternalHref(
   href: string,
   urlToSlug: Record<string, string>,
   guideSlugs: Set<string>,
@@ -33,11 +26,7 @@ export function resolveInternalHref(
   return anchor ? { slug, anchor } : { slug };
 }
 
-// Recursively walks a guide's token tree (or any value within it — marked
-// nests inline tokens under `tokens`, list items under `items`, etc.) and
-// replaces any `{ type: "link", href, text }` whose href resolves internally
-// with an InternalLinkToken. Everything else passes through unchanged,
-// mirroring guides-transform.ts's stripRaw.
+// Recursively walks a guide's token tree, replacing any link token whose href resolves internally with an InternalLinkToken (mirrors guides-transform.ts's stripRaw).
 export function rewriteInternalLinks(value: unknown, urlToSlug: Record<string, string>, guideSlugs: Set<string>): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => rewriteInternalLinks(item, urlToSlug, guideSlugs));

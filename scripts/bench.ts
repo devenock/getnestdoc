@@ -1,8 +1,4 @@
-// Benchmark harness. See TESTING.md § Benchmark harness.
-//
-// Usage:
-//   node scripts/bench.ts                         nest-doc --version, 60 ms budget (Phase 0)
-//   node scripts/bench.ts --budget=150 interceptors
+// Benchmark harness (TESTING.md § Benchmark harness). Usage: node scripts/bench.ts [--budget=150] [query]
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";

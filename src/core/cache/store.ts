@@ -3,10 +3,7 @@ import { dirname, join } from "node:path";
 import type { SymbolRecord } from "../extract/types.ts";
 import { getCacheFilePath } from "./paths.ts";
 
-// SPEC.md §3. Version is the cache *format* version (always 1 today) — not
-// to be confused with packageVersion, which is already part of the filename,
-// so a package upgrade naturally invalidates by landing on a different file
-// with no staleness check needed.
+// SPEC.md §3. `version` is the cache *format* version — `packageVersion` is already part of the filename, so an upgrade invalidates naturally.
 export type CacheFile = {
   version: 1;
   package: string;
@@ -19,9 +16,7 @@ export type CacheFile = {
 const CACHE_FORMAT_VERSION = 1;
 let warnedUnwritable = false;
 
-// Corrupt file -> delete, re-extract, continue silently (ARCHITECTURE.md
-// §10). A CacheFile.version mismatch is treated the same as a miss — no
-// separate handling needed, just don't return it.
+// Corrupt file -> delete, re-extract, continue silently (ARCHITECTURE.md §10). A version mismatch is treated the same as a miss.
 export function readCache(cacheDir: string, packageName: string, packageVersion: string): CacheFile | undefined {
   const filePath = getCacheFilePath(cacheDir, packageName, packageVersion);
   if (!existsSync(filePath)) return undefined;
@@ -50,10 +45,7 @@ export function readCache(cacheDir: string, packageName: string, packageVersion:
   return parsed;
 }
 
-// Atomic: temp file then rename, so a concurrent invocation can never observe
-// a torn entry (ARCHITECTURE.md §5.3). An unwritable cache directory warns
-// once to stderr and otherwise continues — caching is an optimisation, not a
-// correctness requirement, so this never throws.
+// Atomic temp-file-then-rename (ARCHITECTURE.md §5.3). Caching is an optimisation, not a correctness requirement, so an unwritable dir warns once and never throws.
 export function writeCache(cacheDir: string, cacheFile: CacheFile): void {
   try {
     mkdirSync(cacheDir, { recursive: true });

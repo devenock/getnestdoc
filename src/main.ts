@@ -4,15 +4,10 @@ import { fileURLToPath } from "node:url";
 import { CommanderError } from "commander";
 import { createProgram } from "./cli/doc.command.ts";
 
-// dist/nest-doc.mjs (bundled) and src/main.ts (native dev execution) both sit
-// exactly one directory below the package root, so this offset is correct in
-// both contexts without needing to special-case either.
+// Both dist/nest-doc.mjs (bundled) and src/main.ts (dev) sit one directory below the package root.
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "data");
 
-// Exit codes are part of the CLI contract (SPEC.md §5): 0 success, 1 not
-// found, 2 usage error, 4 internal error. Commander's own default for usage
-// errors is 1 (indistinguishable from "not found"), so exitOverride() is
-// needed to reclassify them to 2.
+// Commander's default usage-error exit is 1, indistinguishable from "not found" (SPEC.md §5) — reclassified to 2 below.
 const USAGE_ERROR_CODES = new Set([
   "commander.missingArgument",
   "commander.optionMissingArgument",
@@ -28,11 +23,7 @@ const program = createProgram(DATA_DIR);
 program.exitOverride();
 
 try {
-  // parseAsync, not parse: the action handler is async (a symbol lookup may
-  // need to extract and cache), and parseAsync is what actually awaits it —
-  // plain parse() would let main() return while the lookup is still in
-  // flight, and an error thrown after that point would become an unhandled
-  // rejection instead of landing in this catch.
+  // parseAsync, not parse: the action handler is async, and plain parse() would let main() return before it settles.
   await program.parseAsync(process.argv);
 } catch (err) {
   if (err instanceof CommanderError) {

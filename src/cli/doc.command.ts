@@ -16,26 +16,14 @@ import type { GuidesFile } from "../nest/guides/types.ts";
 import type { AliasFile } from "../nest/aliases.ts";
 import type { RenderOptions } from "../core/render/ansi.ts";
 
-// SPEC.md §5 resolution order: exact guide slug (1), alias (2)... package.symbol
-// (4). Splits on the *last* dot, not the first — platform-socket.io is a real
-// published package name (and a real entry in package-scope.ts's shorthand
-// table) with a literal "." in it, so "platform-socket.io.SomeExport" (or its
-// scoped form, "@nestjs/platform-socket.io.SomeExport") must split into that
-// whole string as the package and "SomeExport" as the symbol. A SymbolRecord
-// name is always a plain identifier (core/extract reads it from
-// node.name.text) and can never itself contain a dot, so the last dot is
-// always the real split point, and this handles the single-dot common case
-// ("common.Injectable") identically to the old first-dot logic.
+// SPEC.md §5 step 4. Splits on the *last* dot, not the first — platform-socket.io is a real package name with a literal "." in it, and a SymbolRecord name never contains one.
 function splitPackageSymbol(query: string): { packageQuery: string; symbolName: string } | undefined {
   const dotIndex = query.lastIndexOf(".");
   if (dotIndex <= 0 || dotIndex === query.length - 1) return undefined;
   return { packageQuery: query.slice(0, dotIndex), symbolName: query.slice(dotIndex + 1) };
 }
 
-// ADR-0007's disambiguation table for a leading "@": name-with-slash is a
-// scoped package, a single capitalised word is a decorator, anything else
-// (a lowercase word, most commonly) has no defined meaning and is a usage
-// error, not a guess.
+// ADR-0007's leading-"@" table: name-with-slash is a package, a capitalised word is a decorator, anything else is a usage error.
 type AtClassification = { kind: "package" } | { kind: "decorator"; name: string } | { kind: "invalid" };
 
 function classifyAtQuery(query: string): AtClassification {
@@ -109,13 +97,7 @@ export function createProgram(dataDir: string): Command {
       }
 
       if (!opts.guide) {
-        // Step 4, package.symbol — tried first and independent of a leading
-        // "@", since a scoped package's own name can precede the dot just as
-        // well as its shorthand ("@nestjs/swagger.ApiProperty" and
-        // "common.Injectable" are the same shape). Falls through (not a
-        // miss) on no match: a dotted string that isn't an installed
-        // package.symbol pair still isn't excluded from being a literal
-        // bare name by anything in the spec.
+        // package.symbol is tried first regardless of a leading "@" ("@nestjs/swagger.ApiProperty" and "common.Injectable" are the same shape); falls through, not a miss, on no match.
         const split = splitPackageSymbol(query);
         if (split) {
           const resolved = await resolvePackageSymbols(split.packageQuery, cwd);
@@ -160,9 +142,7 @@ export function createProgram(dataDir: string): Command {
               }
               return;
             }
-            // Not installed — an @-prefixed scoped package has no other
-            // possible meaning (ADR-0007's table), so this is a genuine miss,
-            // not a fallthrough to bare-symbol resolution.
+            // Not installed — an @-prefixed package has no other meaning (ADR-0007), so this is a genuine miss, not a fallthrough.
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {

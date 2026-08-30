@@ -1,6 +1,4 @@
-// Mirrors SPEC.md §3's SymbolRecord exactly. The CacheFile wrapper (version,
-// package, packageVersion, entryFile, extractedAt, symbols) is Phase 7's
-// concern — this phase only produces the records themselves.
+// Mirrors SPEC.md §3's SymbolRecord exactly; the CacheFile wrapper around it lives in core/cache/store.ts.
 export type SymbolKind = "function" | "class" | "interface" | "type" | "enum" | "const" | "variable";
 
 export type JsDocTag = {

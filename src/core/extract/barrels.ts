@@ -8,9 +8,8 @@ import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
 import type TS from "typescript";
 
-// Specifiers are written with .js (ESM); rewrite to .d.ts, falling back to
-// <spec>/index.d.ts for directory specifiers (ARCHITECTURE.md §5.1).
-export function resolveModuleSpecifier(fromDir: string, specifier: string): string {
+// Specifiers are written with .js (ESM); rewrite to .d.ts, falling back to <spec>/index.d.ts for directory specifiers (ARCHITECTURE.md §5.1).
+function resolveModuleSpecifier(fromDir: string, specifier: string): string {
   const withoutExt = specifier.replace(/\.js$/, "");
   const direct = join(fromDir, `${withoutExt}.d.ts`);
   if (existsSync(direct)) return direct;
@@ -42,27 +41,8 @@ function buildSymbolRecord(
 }
 
 // Walks the barrel graph from a package's entry .d.ts (ARCHITECTURE.md §5.1).
-// `allowedNames` is "all" at the entry point and through every wildcard
-// (`export *`) edge — a wildcard adds no curation, so the filter a file was
-// reached under propagates to it unchanged. A named edge (`export { A, B }`)
-// is its own explicit curation layered on top: only names that satisfy both
-// the statement's own list AND the inherited filter get followed, and only
-// with THAT narrower set for the recursive visit.
-//
-// This distinction is the one specific trap (PROMPTS.md Phase 6): the naive
-// version — resetting to "all" on every wildcard regardless of the current
-// filter — silently over-includes. Verified against the real corpus: root
-// index.d.ts named-exports exactly 56 interface names from interfaces/
-// index.js, which itself wildcards into features/arguments-host.interface.js
-// among many others. That one file alone declares three exports —
-// `ContextType`, `ArgumentsHost`, `HttpArgumentsHost` — only the first two of
-// which are in the root's named list. Propagating "all" instead of the
-// inherited 56-name filter through that wildcard would wrongly pull in
-// `HttpArgumentsHost` (and everything else those files export that was never
-// promoted to the package's public surface).
-//
-// Async, and the only place `typescript` actually loads (typescript-loader.ts)
-// — ADR-0001: guide lookups never pay for it.
+// `allowedNames` propagates unchanged through every wildcard (`export *`) edge and only narrows on a named edge (`export { A, B }`) — resetting to "all" on each wildcard instead would silently over-include names a deeper file exports but the package never promoted to its public surface (verified: this exact trap on the real corpus, see CLAUDE.md).
+// Async, and the only place `typescript` actually loads (ADR-0001: guide lookups never pay for it).
 export async function extractPackage(entryFile: string): Promise<SymbolRecord[]> {
   const ts = await loadTypeScript();
   const packageRoot = dirname(entryFile);

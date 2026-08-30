@@ -1,5 +1,4 @@
-// Colour primitives and width handling. See ADR-0003: hand-written, not
-// chalk — a dozen SGR constants don't need a dependency.
+// Colour primitives and width handling — hand-written, not chalk (ADR-0003): a dozen SGR constants don't need a dependency.
 
 export type RenderOptions = {
   width: number;
@@ -54,14 +53,7 @@ export function magenta(text: string, options: RenderOptions): string {
   return sgr([35], text, options);
 }
 
-export function blue(text: string, options: RenderOptions): string {
-  return sgr([34], text, options);
-}
-
-// Headings colour by depth (ARCHITECTURE.md §7). Depth 1 is a guide's title —
-// bold only, per SPEC.md §4.3 ("Title bold") — then depth 2+ cycle through a
-// small palette so nesting is visually distinguishable without needing more
-// than the standard 16-colour codes.
+// Headings colour by depth (ARCHITECTURE.md §7); depth 1 is bold-only (SPEC.md §4.3, a guide's title), depth 2+ cycle through a small palette.
 const HEADING_COLOR_CODES = [36, 33, 32, 35] as const; // cyan, yellow, green, magenta
 
 export function headingColor(depth: number, text: string, options: RenderOptions): string {
@@ -70,11 +62,7 @@ export function headingColor(depth: number, text: string, options: RenderOptions
   return sgr([1, code], text, options);
 }
 
-// Word-wraps (possibly already ANSI-coloured) text to `width`, measuring each
-// word by its visible length so colour codes never distort wrapping
-// decisions. A single word wider than `width` (a long URL with no spaces,
-// say) is hard-broken — losing its colouring in that one fallback path — so
-// the width cap is never violated regardless of content.
+// Word-wraps to `width`, measuring visible length so ANSI codes never distort wrapping; an oversized single word is hard-broken (losing colour) so the width cap is never violated.
 export function wrapText(text: string, width: number): string[] {
   const limit = Math.max(1, width);
   const words = text.split(/\s+/).filter((w) => w.length > 0);
@@ -115,12 +103,7 @@ export function wrapText(text: string, width: number): string[] {
   return lines;
 }
 
-// Chops a (possibly ANSI-coloured) line into `width`-sized chunks without
-// regard for word boundaries — for code lines, where word-wrapping would
-// collapse meaningful indentation/alignment whitespace. Like wrapText's
-// oversized-word fallback, this strips colour for the fallback chunks rather
-// than risk splitting inside an escape sequence; only reached by the ~1% of
-// real code lines wider than the render width in the first place.
+// Chops a line into `width`-sized chunks ignoring word boundaries — for code, where word-wrapping would collapse meaningful indentation. Strips colour rather than risk splitting inside an escape sequence.
 export function hardWrapVisible(text: string, width: number): string[] {
   const limit = Math.max(1, width);
   if (visibleLength(text) <= limit) return [text];
@@ -132,10 +115,7 @@ export function hardWrapVisible(text: string, width: number): string[] {
   return lines;
 }
 
-// Environment detection — the one impure function in this module. Everything
-// else here and in code.ts/table.ts/markdown.ts takes RenderOptions
-// explicitly and touches neither process.env nor process.stdout, so it stays
-// testable without mocking either (Phase 3: "pure functions, no filesystem").
+// The one impure function in this module — everything else takes RenderOptions explicitly and stays testable without mocking process.env/stdout.
 export function resolveRenderOptions(): RenderOptions {
   const isTTY = process.stdout.isTTY === true;
   const noColor = process.env.NO_COLOR !== undefined;

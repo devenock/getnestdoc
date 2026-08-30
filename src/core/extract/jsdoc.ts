@@ -7,9 +7,7 @@ function flattenComment(ts: typeof TS, comment: string | TS.NodeArray<TS.JSDocCo
   return comment
     .map((part) => {
       if (part.kind === ts.SyntaxKind.JSDocText) return part.text;
-      // JSDocLink / JSDocLinkCode / JSDocLinkPlain: `{@link Name}` and
-      // friends — render the linked name as inline code, matching the
-      // backtick convention used for codespans elsewhere in this project.
+      // `{@link Name}` and friends render as inline code, matching the codespan convention used elsewhere.
       const raw = part.getText();
       const match = /\{@link(?:code|plain)?\s+([^}]+)\}/.exec(raw);
       return match ? `\`${match[1]!.trim()}\`` : raw;
@@ -17,13 +15,7 @@ function flattenComment(ts: typeof TS, comment: string | TS.NodeArray<TS.JSDocCo
     .join("");
 }
 
-// TypeScript's JSDoc tag parser gives @see (and @param) tags a `.name`
-// separate from `.comment` — for @param that's the parameter name,
-// intentional. For @see it's a parsing quirk: a bare-URL `@see https://x`
-// tokenises as if "https" were a {@link name}-style reference, leaving
-// "://x" as the comment. Verified against the real corpus: 9 of 164 @see
-// tags in @nestjs/common@12.0.1 hit this. Reconstructing name + comment
-// recovers the original text for every tag shape, including this one.
+// A bare-URL `@see https://x` tokenises "https" into `.name` and "://x" into `.comment` (a TS parser quirk, verified on 9/164 real @see tags) — reconstructing name + comment recovers the full text for every tag shape.
 function reconstructTagText(ts: typeof TS, tag: TS.JSDocTag): string {
   const namePart = (tag as { name?: TS.EntityName | TS.JSDocMemberName }).name;
   return (namePart ? namePart.getText() : "") + flattenComment(ts, tag.comment);
@@ -40,8 +32,7 @@ function parseSeeLink(text: string): SeeLink | undefined {
     return { text: url, url };
   }
 
-  // e.g. `{ParseFilePipe}` — an internal symbol cross-reference, no URL to
-  // extract. Still present in the raw `tags` array; just not in `see`.
+  // e.g. `{ParseFilePipe}` — a symbol cross-reference, no URL; stays in `tags`, just not `see`.
   return undefined;
 }
 
@@ -54,12 +45,7 @@ export type JsDocResult = {
 
 const EMPTY_RESULT: JsDocResult = { doc: "", tags: [], see: [], isPublicApi: false };
 
-// ARCHITECTURE.md §5.2: doc from `node.jsDoc.at(-1).comment`, tags from
-// `.tags[].tagName.text`, see filtered from tags, isPublic from a `publicApi`
-// tag's presence. `.jsDoc` isn't part of the public compiler API surface
-// (hence the cast) but is populated at parse time and stable across the
-// TypeScript versions this project has used. `ts` is passed in rather than
-// imported here — see typescript-loader.ts for why.
+// ARCHITECTURE.md §5.2. `.jsDoc` isn't part of the public compiler API (hence the cast) but is populated at parse time and stable across the TS versions this project has used.
 export function extractJsDoc(ts: typeof TS, node: TS.Node): JsDocResult {
   const jsDocNodes = (node as { jsDoc?: TS.JSDoc[] }).jsDoc;
   if (!jsDocNodes || jsDocNodes.length === 0) return EMPTY_RESULT;

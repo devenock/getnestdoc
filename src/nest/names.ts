@@ -3,8 +3,7 @@ import { dirname, join } from "node:path";
 import type { SymbolRecord } from "../core/extract/types.ts";
 import { resolvePackageSymbols } from "./symbols.ts";
 
-// Mirrors SPEC.md §2b. Defined here (not scripts/) for the same reason as
-// AliasFile/GuidesFile — this is the runtime consumer.
+// Mirrors SPEC.md §2b — defined here, not scripts/, since this is the runtime consumer.
 export type NameIndex = {
   version: 1;
   generatedAt: string;
@@ -22,11 +21,7 @@ export type BareSymbolResolution =
   | { status: "ambiguous"; packageNames: string[] }
   | { status: "not-found" };
 
-// Everything under node_modules/@nestjs/* that findPackageDir can resolve —
-// ADR-0007's fallback for names outside the shipped index ("third-party Nest
-// packages fall back to scanning, which is slower and requires
-// installation"). Walks up the same way findPackageDir does, since a scoped
-// directory's siblings live at the same node_modules level.
+// ADR-0007's fallback for names outside the shipped index — scan node_modules/@nestjs/* directly, walking up the same way findPackageDir does.
 function listInstalledNestPackages(startDir: string): string[] {
   let dir = startDir;
   while (true) {
@@ -59,10 +54,7 @@ async function scanInstalledPackagesForName(name: string, startDir: string): Pro
   return { status: "found", ...matches[0]! };
 }
 
-// SPEC.md §5 resolution step 5, ADR-0007. `name` has already had a leading
-// "@" stripped by the caller (the disambiguation table lives in
-// doc.command.ts, since it also has to decide "@nestjs/common" is a package
-// before this is ever reached).
+// SPEC.md §5 step 5, ADR-0007. `name` has already had a leading "@" stripped by the caller — the disambiguation table lives in doc.command.ts.
 export async function resolveBareSymbol(name: string, dataDir: string, startDir: string): Promise<BareSymbolResolution> {
   const nameIndex = loadNameIndex(dataDir);
   const owners = nameIndex.names[name];

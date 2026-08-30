@@ -1,9 +1,4 @@
-// Minimal TS/JS syntax highlighting: a small regex tokeniser covering
-// keywords, strings, comments, and decorators. Not a parser (ADR-0003) —
-// applied to every code fence regardless of its declared language, which is
-// approximate for non-JS-like fences (bash, json) but harmless; comments and
-// strings are close enough to universal, and a handful of coincidental
-// keyword matches in a bash snippet don't mislead anyone.
+// Minimal TS/JS syntax highlighting via regex, not a parser (ADR-0003) — applied to every fence regardless of declared language; approximate for non-JS fences but harmless.
 import { cyan, dim, green, magenta, hardWrapVisible, type RenderOptions } from "./ansi.ts";
 
 const KEYWORDS = [
@@ -27,7 +22,7 @@ const TOKEN_RE = new RegExp(
   "g",
 );
 
-export function highlightCode(code: string, options: RenderOptions): string {
+function highlightCode(code: string, options: RenderOptions): string {
   if (!options.color) return code;
 
   return code.replace(TOKEN_RE, (match, lineComment, blockComment, string, decorator, keyword: string | undefined) => {
@@ -39,9 +34,7 @@ export function highlightCode(code: string, options: RenderOptions): string {
   });
 }
 
-// Highlights, then splits into lines ready to print — each line hard-wrapped
-// (not word-wrapped: code indentation and alignment whitespace is meaningful)
-// if it's wider than `width`.
+// Hard-wrapped, not word-wrapped — code indentation and alignment whitespace is meaningful.
 export function renderCodeLines(code: string, options: RenderOptions): string[] {
   const highlighted = highlightCode(code, options);
   return highlighted.split("\n").flatMap((line) => hardWrapVisible(line, options.width));

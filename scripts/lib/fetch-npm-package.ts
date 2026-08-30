@@ -1,9 +1,4 @@
-// Shared by build-names.ts: downloads a real published tarball straight from
-// the npm registry (same "verify against the real thing" approach
-// fetch-docs-repo.ts uses for the guide corpus) and lays it out as a real
-// node_modules/<name> directory, so the production find-package.ts /
-// entry-types.ts / extract code can run against it completely unmodified —
-// no synthetic FoundPackage construction needed.
+// Shared by build-names.ts: downloads a real published tarball and lays it out as a real node_modules/<name> directory, so production find-package.ts/entry-types.ts run against it unmodified.
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -12,9 +7,7 @@ type RegistryVersionMeta = {
   dist: { tarball: string };
 };
 
-// Extracts into <nodeModulesRoot>/node_modules/<name>/, mirroring exactly
-// where a real install would put it, so findPackageDir("<name>", tmpDir)
-// works unmodified.
+// Extracts into <nodeModulesRoot>/node_modules/<name>/, exactly where a real install would put it.
 export async function fetchAndExtractPackage(name: string, version: string, nodeModulesRoot: string): Promise<string> {
   const res = await fetch(`https://registry.npmjs.org/${name}/${version}`);
   if (!res.ok) {
@@ -41,10 +34,7 @@ export async function fetchAndExtractPackage(name: string, version: string, node
     throw new Error(`tar exited ${result.status} for ${name}@${version}: ${result.stderr.toString()}`);
   }
 
-  // npm packs everything under a top-level "package/" directory even after
-  // --strip-components=1 accounts for that layer; guard against a tarball
-  // shaped differently than expected rather than silently pointing at an
-  // empty directory.
+  // Guard against a tarball shaped differently than expected rather than silently pointing at an empty directory.
   const entries = readdirSync(packageDir);
   if (!entries.includes("package.json")) {
     throw new Error(`${name}@${version}: extracted directory has no package.json (found: ${entries.join(", ")})`);

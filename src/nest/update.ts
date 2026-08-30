@@ -26,28 +26,14 @@ function walkMarkdownFiles(dir: string): string[] {
   return out.sort();
 }
 
-// Same temp-file-then-rename discipline as core/cache/store.ts, applied to
-// both output files — not perfectly atomic across the pair (two renames
-// can't be one syscall), but each file individually is never observed
-// half-written, and the window between the two renames is microseconds.
+// Same temp-file-then-rename discipline as core/cache/store.ts — not atomic across the pair of files, but each individually is never observed half-written.
 function writeAtomic(path: string, contents: string): void {
   const tempPath = `${path}.${process.pid}.tmp`;
   writeFileSync(tempPath, contents);
   renameSync(tempPath, path);
 }
 
-// SPEC.md §5: `nest-doc update` is the only networked command — everything
-// else in this codebase reads from data/*.json, shipped in the package.
-// Reuses the exact same fetch/transform pipeline scripts/build-guides.ts and
-// scripts/build-aliases.ts run at release time (src/nest/update/*), because
-// it *is* the same job — refresh the two generated files — just triggered by
-// a user at runtime instead of CI on a schedule. `ts` and `marked` are both
-// loaded through their lazy loaders (core/extract/typescript-loader.ts,
-// update/marked-loader.ts): this whole module is only ever reached by
-// actually running the `update` subcommand, but per the verified ESM
-// hoisting behaviour, a *static* import here would still eagerly load both
-// on every CLI invocation regardless — the dynamic imports below are load-
-// bearing, not decorative.
+// SPEC.md §5: `nest-doc update` is the only networked command. Reuses the exact same fetch/transform pipeline the build scripts run at release time. `ts`/`marked` load through their lazy loaders — a static import here would still eagerly load both on every CLI invocation regardless of this module only being reached via `update` (verified ESM hoisting behaviour).
 export async function runUpdate(dataDir: string): Promise<UpdateResult> {
   const [ts, marked] = await Promise.all([loadTypeScript(), loadMarked()]);
   const tmpDir = mkdtempSync(join(tmpdir(), "getnestdoc-update-"));

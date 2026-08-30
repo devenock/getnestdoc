@@ -1,9 +1,7 @@
 import { build } from "esbuild";
 import { chmodSync } from "node:fs";
 
-// Optional peers of @nestjs/* that only the user's project may have installed.
-// esbuild must not try to resolve their `require()` calls at bundle time.
-// See ARCHITECTURE.md §8.
+// Optional @nestjs/* peers only the user's project may have installed — esbuild must not resolve their require() calls at bundle time (ARCHITECTURE.md §8).
 const NEST_OPTIONAL_PEERS = [
   "class-validator",
   "class-transformer",
@@ -15,10 +13,7 @@ const NEST_OPTIONAL_PEERS = [
   "cache-manager",
 ];
 
-// `typescript` and `marked` are both runtime dependencies lazy-imported on a
-// single path each (the symbol path, and `nest-doc update` respectively) and
-// deliberately not bundled — see ADR-0001, ARCHITECTURE.md §8, and
-// src/nest/update/marked-loader.ts.
+// `typescript`/`marked` are lazy-loaded runtime dependencies, deliberately not bundled (ADR-0001, ARCHITECTURE.md §8).
 const external = [...NEST_OPTIONAL_PEERS, "typescript", "marked"];
 
 await build({

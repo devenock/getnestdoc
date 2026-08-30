@@ -1,15 +1,10 @@
-// Column-aligned table rendering (ARCHITECTURE.md §7's "table → column-aligned
-// box"). Plain aligned columns with a dashed header rule, not a full
-// box-drawing border — simpler, and every real CLI table (kubectl, docker ps,
-// go doc) reads fine this way.
+// Column-aligned table rendering (ARCHITECTURE.md §7) — plain columns with a dashed rule, not a box-drawing border.
 import { bold, cyan, visibleLength, wrapText, type RenderOptions } from "./ansi.ts";
 import type { TableToken } from "./types.ts";
 
 const COLUMN_GAP = 2;
 
-// Table cells preserve inline code spans as backtick-wrapped text (see
-// guides-transform.ts's stripCellTags) — style them here the same as
-// codespan elsewhere: cyan, backticks stripped.
+// Cells carry code spans as backtick-wrapped text (guides-transform.ts's stripCellTags) — style cyan, same as codespan elsewhere.
 function styleCellText(text: string, options: RenderOptions): string {
   return text.replace(/`([^`]+)`/g, (_match, inner: string) => cyan(inner, options));
 }
@@ -42,20 +37,13 @@ export function renderTable(token: TableToken, options: RenderOptions): string[]
 
   const overhead = COLUMN_GAP * (numCols - 1);
   const naturalTotal = naturalWidth.reduce((a, b) => a + b, 0);
-  // Guaranteed >= numCols given the width floor of 40 (SPEC.md's environment
-  // rules) and the real corpus's max of 4 columns — see table.test cases.
   const available = Math.max(numCols, options.width - overhead);
 
   let colWidths: number[];
   if (naturalTotal <= available) {
     colWidths = naturalWidth;
   } else {
-    // Columns narrower than their fair share (e.g. a short "Type" column)
-    // keep their natural width; the leftover space gets redistributed to
-    // whichever column(s) actually need more (typically "Description") —
-    // proportional scaling of every column equally would squeeze short
-    // columns just as hard as the long one, breaking single unbroken words
-    // like camelCase option names for no reason.
+    // Fair-share redistribution: narrow columns keep their natural width, leftover space goes to columns that actually need it — uniform proportional scaling would squeeze short columns as hard as long ones.
     const fairShare = available / numCols;
     colWidths = new Array(numCols).fill(0) as number[];
     let leftover = 0;

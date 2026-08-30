@@ -6,7 +6,7 @@ import { describeUnusablePackage, resolveEntryTypes } from "../core/resolve/entr
 import { findPackageDir } from "../core/resolve/find-package.ts";
 import { expandPackageShorthand } from "./package-scope.ts";
 
-export type PackageSymbols = {
+type PackageSymbols = {
   packageName: string;
   packageVersion: string;
   symbols: SymbolRecord[];
@@ -17,12 +17,7 @@ export type ResolvePackageSymbolsResult =
   | { status: "not-installed"; packageName: string }
   | { status: "unusable"; message: string };
 
-// Ties resolve + cache + extract together (ARCHITECTURE.md §2's request
-// lifecycle): expand the common.X shorthand, locate the package, resolve its
-// entry .d.ts, check the cache, and only fall through to extractPackage() —
-// which is the only place `typescript` actually loads — on a genuine miss.
-// A cache hit never imports the extractor's module graph at all, so a warm
-// symbol lookup pays none of the ~200 ms typescript load cost (Phase 7).
+// Ties resolve + cache + extract together (ARCHITECTURE.md §2). A cache hit never reaches extractPackage(), so a warm lookup pays none of the ~200ms typescript load cost.
 export async function resolvePackageSymbols(rawName: string, startDir: string): Promise<ResolvePackageSymbolsResult> {
   const packageName = expandPackageShorthand(rawName);
   const found = findPackageDir(packageName, startDir);

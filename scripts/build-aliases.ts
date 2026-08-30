@@ -1,6 +1,4 @@
-// Produces data/aliases.json, and rewrites data/guides.json's internal links
-// using it. Build-time only, run alongside build-guides.ts (ARCHITECTURE.md
-// §6.1) — never at install time, never at runtime.
+// Produces data/aliases.json and rewrites data/guides.json's internal links using it. Build-time only, run alongside build-guides.ts (ARCHITECTURE.md §6.1).
 import ts from "typescript";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

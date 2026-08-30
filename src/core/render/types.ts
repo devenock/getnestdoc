@@ -1,15 +1,7 @@
 import type { MarkedToken } from "marked";
 
-// The generic token contract SPEC.md §1 defines — what core/render/ actually
-// consumes. Guide/GuidesFile (the file-level wrapper: slug, title,
-// sourceCommit, etc.) are Nest-specific concerns and live in nest/guides/
-// instead; core/ must not import from nest/ (ARCHITECTURE.md §3), so the
-// token shapes the renderer needs have to be defined on this side of that
-// boundary. scripts/lib/guides-types.ts (build-time) imports these back so
-// there's one definition, not two that can drift.
-//
-// `marked` is only a devDependency (SPEC.md §6) — this is a type-only import,
-// erased at bundle time, so it doesn't pull marked into the runtime bundle.
+// The generic token contract SPEC.md §1 defines. Guide/GuidesFile (slug, title, etc.) are Nest-specific and live in nest/guides/ instead — core/ must not import from nest/ (ARCHITECTURE.md §3).
+// Type-only import, erased at bundle time — doesn't pull marked into the runtime bundle.
 export type Heading = {
   depth: number;
   text: string;

@@ -13,21 +13,11 @@ function flattenScopedName(name: string): string {
 }
 
 // SPEC.md §5 exit code 3: "package found but unusable — ships no types."
-// ARCHITECTURE.md §10 previously said exit 1 for this case, contradicting the
-// exit code table — corrected in Phase 5.
 export function describeUnusablePackage(name: string): string {
   return `"${name}" is installed but ships no type declarations. Try \`npm i -D @types/${flattenScopedName(name)}\`.`;
 }
 
-// ARCHITECTURE.md §4.3, four cases in order. Verified against real packages
-// (test/fixtures/node_modules/, FIXTURES.md), not assumed from the spec text:
-// @nestjs/common@12.0.1 has an exports map with no types condition (case 3,
-// as documented). But @nestjs/common@11.2.3 and @10.4.22 have neither an
-// exports map NOR a main field at all — case 3 as ARCHITECTURE.md describes
-// it ("exports map without one -> sibling inference") has nothing to infer
-// from. Node/TypeScript's implicit default (main defaults to "./index.js")
-// has to run first; the .js -> .d.ts sibling inference is the same idea, it
-// just needs a source to infer from when there's no exports map at all.
+// ARCHITECTURE.md §4.3, four cases in order — verified against real fixtures, not the spec text alone: @nestjs/common@11/10 have neither an exports map nor a main field, so Node's implicit "./index.js" default has to run before the .js -> .d.ts sibling inference applies.
 export function resolveEntryTypes(found: FoundPackage): EntryResolution {
   const { manifest, packageDir } = found;
 

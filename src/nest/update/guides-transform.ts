@@ -2,21 +2,12 @@ import type { marked as MarkedSingleton, MarkedToken, Token, Tokens } from "mark
 import type { CodeToken, GuideToken, Heading, ImageToken, TableToken } from "../../core/render/types.ts";
 import type { Guide } from "../guides/types.ts";
 
-// ---------------------------------------------------------------------------
-// Raw-text normalisation, before marked ever sees the markdown.
-// ---------------------------------------------------------------------------
-
-// Strip by prefix match, not by enumerating the five known variants (ARCHITECTURE.md §6.3).
-// Verified: always a complete, single-line, self-closing `<tag></tag>` pair, and never
-// found inside a code fence, so a global string-level strip is safe.
+// Always a complete, self-closing tag, never inside a code fence — a global string strip is safe (ARCHITECTURE.md §6.3).
 function stripAppBanners(markdown: string): string {
   return markdown.replace(/<app-banner-[\w-]*>\s*<\/app-banner-[\w-]*>/g, "");
 }
 
-// The docs site is an Angular app; authors escape literal braces for its `{{ }}`
-// interpolation syntax. Not documented anywhere, found by grepping the real corpus
-// (80 occurrences across 25 files, e.g. `@Body({{ '{' }} schema {{ '}' }})`).
-// A stray HTML-entity form (`&#123;` / `&#125;`) also appears a handful of times.
+// Angular's {{ }} interpolation forces literal braces to be escaped this way in the source markdown; undocumented, found by grepping the corpus.
 function decodeBraceEscapes(markdown: string): string {
   return markdown
     .replace(/\{\{\s*'\{'\s*\}\}/g, "{")
@@ -29,20 +20,7 @@ function normalizeSource(markdown: string): string {
   return decodeBraceEscapes(stripAppBanners(markdown));
 }
 
-// ---------------------------------------------------------------------------
-// <table> and <figure><img> extraction.
-//
-// These must be pulled out of the RAW markdown text before lexing, not found by
-// walking marked's token tree afterward. Verified against the real corpus:
-// marked's HTML-block tokenizer stops at the first blank line, so a single
-// `<table>` with a blank line between two of its own `<tr>` rows
-// (content/techniques/validation.md) gets split across two sibling tokens, and
-// conversely two adjacent `<table>` blocks with no blank line between them
-// (content/microservices/basics.md, table/<p>/table with zero blank lines)
-// get merged into one token. Placeholder substitution on the raw string sidesteps
-// both failure modes: marked never sees real table/figure HTML at all.
-// ---------------------------------------------------------------------------
-
+// <table>/<figure> blocks are pulled from the raw text before lexing, not walked from marked's token tree — marked's HTML-block tokenizer both splits a single table across a blank line and merges adjacent tables with none, and a placeholder swap sidesteps both.
 type ExtractedBlock = { kind: "table"; token: TableToken } | { kind: "image"; token: ImageToken };
 
 function stripCellTags(html: string): string {
@@ -54,9 +32,7 @@ function stripCellTags(html: string): string {
   return s;
 }
 
-// <td>/<th> end tags are optional in real HTML (verified: content/microservices/nats.md
-// has two rows where the closing </td> is simply missing). A cell ends at the next
-// <td>/<th> start tag or the end of the row, not at its own close tag.
+// <td>/<th> end tags are optional in real HTML; a cell ends at the next start tag or the row's end, not its own close tag.
 function parseHtmlTableRow(rowHtml: string): { tag: "td" | "th"; text: string }[] {
   const cells: { tag: "td" | "th"; text: string }[] = [];
   const tagRe = /<(td|th)\b[^>]*>/gi;
@@ -102,12 +78,7 @@ function extractHtmlBlocks(markdown: string): { text: string; placeholders: Map<
   let i = 0;
 
   const text = markdown.replace(/<table>.*?<\/table>|<figure>.*?<\/figure>/gs, (match, offset: number, full: string) => {
-    // A <figure> can appear inside a GFM pipe-table cell (verified:
-    // content/recipes/terminus.md, an error-log-style table with a screenshot per
-    // row). Leave those alone — marked will tokenize them as inline html within the
-    // cell, and flattenInline() renders bare <img> there directly. Extracting them
-    // here would swap in a placeholder that ends up concatenated into a larger cell
-    // string with no way to resolve it back out.
+    // A <figure> inside a GFM table cell is left alone — marked tokenizes it as inline html there, which flattenInline() already handles.
     const lineStart = full.lastIndexOf("\n", offset - 1) + 1;
     if (full.slice(lineStart, offset).includes("|")) return match;
 
@@ -129,22 +100,13 @@ function placeholderToken(entry: ExtractedBlock): TableToken | ImageToken {
   return entry.token;
 }
 
-// A placeholder can land as the sole content of its own paragraph (the common case),
-// share a paragraph with a sibling placeholder and nothing else — two <figure>s on
-// adjacent lines with no blank line between them (content/recipes/documentation.md);
-// marked treats consecutive non-blank lines as one paragraph with an internal break —
-// or get absorbed into a neighbouring HTML block that has no blank line separating it
-// from the placeholder (the table/<p>/table case). Handle all three uniformly by
-// searching for placeholder occurrences anywhere in the block's text, not requiring
-// a whole-text match.
+// A placeholder can be its own paragraph, share one with a sibling placeholder, or get absorbed into a neighbouring HTML block — search for occurrences anywhere in the text rather than requiring a whole-text match.
 function splitOnPlaceholders(text: string, placeholders: Map<string, ExtractedBlock>): GuideToken[] {
   if (placeholders.size === 0) {
     return [{ type: "html", raw: text, pre: false, text, block: true }];
   }
 
-  // Sort longest-first: placeholder N is a numeric suffix of the nonce, and a
-  // shorter key (e.g. index 1) can be a literal substring of a longer one
-  // (index 10) — alternation must try the longer match first.
+  // Sort longest-first: a shorter placeholder key can be a literal substring of a longer one.
   const pattern = [...placeholders.keys()].sort((a, b) => b.length - a.length).join("|");
   const re = new RegExp(pattern, "g");
   const out: GuideToken[] = [];
@@ -171,10 +133,6 @@ function splitOnPlaceholders(text: string, placeholders: Map<string, ExtractedBl
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Inline token flattening — used for heading anchors/text and GFM table cells.
-// ---------------------------------------------------------------------------
-
 function flattenInline(tokens: Token[] | undefined, preserveCode: boolean): string {
   if (!tokens) return "";
   let out = "";
@@ -197,10 +155,7 @@ function flattenInline(tokens: Token[] | undefined, preserveCode: boolean): stri
         out += " ";
         break;
       case "html": {
-        // Table cells can carry a <br> line break, or a <figure><img></figure> that
-        // marked splits into three separate inline html tokens (verified:
-        // content/recipes/terminus.md) — <figure>/</figure> contribute nothing here,
-        // the <img> itself renders as a short placeholder.
+        // A table cell's <figure><img></figure> splits into three separate inline html tokens; only the <img> renders, as a short placeholder.
         if (/^<br\s*\/?>/i.test(t.text)) {
           out += " ";
           break;
@@ -219,15 +174,7 @@ function flattenInline(tokens: Token[] | undefined, preserveCode: boolean): stri
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Headings. Verified against src/app/shared/directives/header-anchor.directive.ts
-// in the docs repo: the real site's anchor id is `innerText.replace(/\s/g, '-').toLowerCase()`
-// — whitespace-only, no punctuation stripping. Depth: Nest's top-level `###` is 1;
-// verified via header-anchor.directive.ts's caller structure and the corpus itself
-// (142/143 files start at ###, one at ##) that "H3 is the base unit" (depth - 2,
-// floored at 1) is the intended normalisation, not "first heading becomes 1".
-// ---------------------------------------------------------------------------
-
+// Verified against the docs repo's own header-anchor.directive.ts: anchor id is whitespace-only lowercasing, and "###" is the corpus's base heading depth (floored at 1).
 function normalizeDepth(rawDepth: number): number {
   return Math.max(1, rawDepth - 2);
 }
@@ -236,16 +183,7 @@ function slugAnchor(text: string): string {
   return text.replace(/\s/g, "-").toLowerCase();
 }
 
-// ---------------------------------------------------------------------------
-// Code fences.
-// ---------------------------------------------------------------------------
-
-// @@filename(x) is documented as always the first line of a fence. Verified against
-// the real corpus: true for 452 of 453 occurrences. The one exception
-// (content/websockets/gateways.md) has it mid-fence with no @@switch present — an
-// upstream authoring slip, not a second directive form. Scanning the whole fence
-// (not just line 0) handles it and satisfies the "no literal @@filename" invariant
-// either way.
+// @@filename(x) is documented as always the fence's first line; one real corpus file breaks that (an upstream authoring slip), so the whole fence is scanned rather than just line 0.
 function transformCodeToken(token: Tokens.Code, context: string): CodeToken {
   const lines = token.text.split("\n");
   const contentLines: string[] = [];
@@ -285,14 +223,7 @@ function transformCodeToken(token: Tokens.Code, context: string): CodeToken {
   };
 }
 
-// ---------------------------------------------------------------------------
-// GFM pipe-tables (`| a | b |`). Not mentioned in ARCHITECTURE.md §6.1, which
-// documents only the 35 HTML <table> blocks — but 45 more tables in the real
-// corpus use plain GFM syntax instead, which marked already parses natively into
-// its own Tokens.Table shape. SPEC.md's TableToken isn't scoped to HTML-sourced
-// tables, so both forms are normalised to the same shape here.
-// ---------------------------------------------------------------------------
-
+// GFM pipe-tables aren't in ARCHITECTURE.md §6.1's count (HTML <table>s only) but 45 more real tables use this form; both are normalised to the same TableToken shape.
 function convertNativeTable(token: Tokens.Table): TableToken {
   return {
     type: "table",
@@ -302,12 +233,7 @@ function convertNativeTable(token: Tokens.Table): TableToken {
   };
 }
 
-// marked's `raw` field (the exact source slice a token was parsed from) is pure
-// round-trip-to-markdown information that nothing here ever needs — rendering
-// walks `tokens`/`text`, never reconstructs source. It's also the single biggest
-// contributor to guides.json's size: ~2 MB of the ~6.5 MB unstripped output measured
-// against the real corpus, well over ARCHITECTURE.md §1's ~2 MB budget for the whole
-// file. Stripped recursively, size-neutral to anything the renderer reads.
+// marked's `raw` field is pure round-trip-to-source info nothing here reads, and was ~2 MB of guides.json's unstripped ~6.5 MB.
 function stripRaw(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripRaw);
   if (value !== null && typeof value === "object") {
@@ -321,21 +247,10 @@ function stripRaw(value: unknown): unknown {
   return value;
 }
 
-// ---------------------------------------------------------------------------
-// Top-level pipeline for one guide file.
-// ---------------------------------------------------------------------------
-
-// `marked` is threaded through as a parameter, not imported statically — this
-// module is reached from the runtime `nest-doc update` path (src/nest/update.ts),
-// not just build-time scripts, and a static `import { marked } from "marked"`
-// gets hoisted into the bundle and eagerly evaluated on every CLI invocation
-// regardless of dynamic-import wrapping elsewhere (verified — the same ESM
-// hoisting behavior documented at core/extract/typescript-loader.ts).
+// `marked` is a parameter, not a static import — this module ships in the runtime `nest-doc update` bundle, and a static import would defeat the lazy-loading typescript-loader.ts establishes.
 export function transformMarkdown(marked: typeof MarkedSingleton, rawMarkdown: string, file: string): Pick<Guide, "title" | "headings" | "tokens"> {
   const normalized = normalizeSource(rawMarkdown);
   const { text, placeholders } = extractHtmlBlocks(normalized);
-  // marked.lexer() returns Token[] (MarkedToken | Tokens.Generic); without custom
-  // tokenizer extensions registered, Generic never actually occurs.
   const parsed = marked.lexer(text) as MarkedToken[];
 
   const tokens: GuideToken[] = [];

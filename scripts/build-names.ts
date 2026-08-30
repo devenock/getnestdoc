@@ -1,16 +1,4 @@
-// Produces data/names.json (SPEC.md §2b, ADR-0007). Build-time only, run
-// alongside build-guides.ts / build-aliases.ts — never at install time,
-// never at runtime.
-//
-// Scope: the 9 packages published from the nestjs/nest monorepo's packages/
-// directory (verified authorship — see package-scope.ts) plus @nestjs/swagger,
-// which ADR-0007's own collision check and documentation-coverage findings
-// were measured against. The other ~24 names in package-scope.ts's official
-// scope table are separately-repo'd, more loosely "official" packages
-// (passport/mongoose/typeorm wrappers etc.); ADR-0007 already designs for
-// this — names outside the shipped index fall back to scanning the user's
-// installed @nestjs/*, so under-covering here is a documented degradation,
-// not a silent gap.
+// Produces data/names.json (SPEC.md §2b, ADR-0007), build-time only, scoped to the 9 nestjs/nest monorepo packages plus @nestjs/swagger — names outside this index fall back to scanning the user's installed @nestjs/*, a documented degradation, not a silent gap.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,8 +7,7 @@ import { resolveEntryTypes } from "../src/core/resolve/entry-types.ts";
 import { extractPackage } from "../src/core/extract/barrels.ts";
 import { fetchAndExtractPackage } from "./lib/fetch-npm-package.ts";
 
-// All 10 release in lockstep at the same version — verified against the npm
-// registry, not assumed (`npm view @nestjs/<name>@12.0.1 version` for each).
+// All 10 release in lockstep at the same version — verified against the npm registry, not assumed.
 const VERSION = "12.0.1";
 const PACKAGES = [
   "@nestjs/common",

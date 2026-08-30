@@ -1,6 +1,4 @@
-// A minimal shape of the package.json fields resolution actually reads.
-// Not a full PackageJson type (no such canonical one ships with Node, and
-// pulling in a dependency just for the type is more than this needs).
+// A minimal shape of the package.json fields resolution actually reads — no canonical PackageJson type ships with Node, and a dependency for it is more than this needs.
 export type ExportsCondition = {
   types?: string;
   require?: string;
@@ -24,7 +22,7 @@ export type FoundPackage = {
   manifest: PackageManifest;
 };
 
-export type EntryResolutionCase = 1 | 2 | 3 | 4;
+type EntryResolutionCase = 1 | 2 | 3 | 4;
 
 export type EntryResolution =
   | { found: true; entryFile: string; resolutionCase: EntryResolutionCase }

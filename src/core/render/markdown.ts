@@ -4,13 +4,12 @@ import { renderCodeLines } from "./code.ts";
 import { renderTable } from "./table.ts";
 import type { CodeToken, GuideToken, ImageToken, InternalLinkToken, TableToken } from "./types.ts";
 
-// `js: true` renders CodeToken.js when present (falls back to .ts otherwise) —
-// the --js flag Phase 4 wires up. Everything else here is exactly RenderOptions.
+// `js: true` renders CodeToken.js when present, falling back to .ts — the --js flag's effect.
 export type MarkdownRenderOptions = RenderOptions & { js?: boolean };
 
 const CODE_INDENT = 4;
 const LIST_INDENT = 2;
-const QUOTE_PREFIX = "│ "; // "│ "
+const QUOTE_PREFIX = "│ ";
 
 function isCodeToken(token: GuideToken): token is CodeToken {
   return token.type === "code" && "ts" in token;
@@ -24,22 +23,12 @@ function isInternalLinkToken(token: GuideToken): token is InternalLinkToken {
   return token.type === "internalLink";
 }
 
-// marked declares nested inline arrays as `Token[]` (its own wide type,
-// which includes an unused Tokens.Generic escape hatch for custom tokenizer
-// extensions we never register). Real data never contains Generic, so this
-// cast is the same one guides-transform.ts makes at the lexer boundary in
-// Phase 1 — it keeps every function below working with one clean union
-// instead of fighting Generic's non-literal `type` field at every level.
+// marked's Token[] includes an unused Tokens.Generic escape hatch (no custom tokenizers registered, so real data never has one) — cast to the clean GuideToken union, same as guides-transform.ts's lexer boundary.
 function asGuideTokens(tokens: unknown): GuideToken[] {
   return (tokens ?? []) as GuideToken[];
 }
 
-// ---------------------------------------------------------------------------
-// Inline rendering — strong/em/del/codespan/link/internalLink/text, walked
-// within a heading, paragraph, or list item to produce one styled string
-// (not yet wrapped; the caller wraps once it has the full inline text).
-// ---------------------------------------------------------------------------
-
+// Inline rendering, not yet wrapped — the caller wraps once it has the full inline text.
 function renderInline(tokens: unknown, options: MarkdownRenderOptions): string {
   let out = "";
   for (const token of asGuideTokens(tokens)) out += renderInlineToken(token, options);
@@ -88,14 +77,7 @@ function renderInlineToken(token: GuideToken, options: MarkdownRenderOptions): s
   }
 }
 
-// ---------------------------------------------------------------------------
-// Raw HTML pass-through blocks (guides-transform.ts leaves whatever isn't a
-// <table>/<figure> as-is — file-tree <div> diagrams, stray <a>/<sup> tags,
-// <blockquote class="external">, marketing page layouts). Strip tags, keep
-// rough line structure, render as dim wrapped text — lossy, but safe and
-// simple for what is fundamentally decorative leftover markup.
-// ---------------------------------------------------------------------------
-
+// Raw HTML pass-through (whatever guides-transform.ts left as-is, not a <table>/<figure>) — strip tags, keep rough line structure, render dim. Lossy, but safe for decorative leftover markup.
 function stripHtmlToLines(html: string): string[] {
   const withBreaks = html.replace(/<\/(div|p|li|h[1-6]|tr|blockquote)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n");
   const text = withBreaks.replace(/<[^>]+>/g, "");
@@ -104,10 +86,6 @@ function stripHtmlToLines(html: string): string[] {
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line.length > 0);
 }
-
-// ---------------------------------------------------------------------------
-// Block rendering.
-// ---------------------------------------------------------------------------
 
 function renderCodeBlock(token: CodeToken, options: MarkdownRenderOptions): string {
   const content = options.js && token.js !== undefined ? token.js : token.ts;
@@ -132,7 +110,7 @@ function renderList(token: Tokens.List, options: MarkdownRenderOptions, depth: n
   const start = token.start === "" ? 1 : token.start;
 
   token.items.forEach((item, index) => {
-    const marker = token.ordered ? `${start + index}. ` : "• "; // "• "
+    const marker = token.ordered ? `${start + index}. ` : "• ";
     const markerWidth = visibleLength(marker);
     const hangingIndent = indent + " ".repeat(markerWidth);
 
@@ -188,9 +166,7 @@ function renderBlock(token: GuideToken, options: MarkdownRenderOptions): string 
     case "list":
       return renderList(token, options, 0);
     case "table":
-      // Real data always carries our TableToken shape here (guides-transform.ts
-      // replaces every "table" token, HTML- or GFM-sourced, before this ever
-      // runs) — marked's own native Tokens.Table never reaches the renderer.
+      // guides-transform.ts already normalises every table token to TableToken; marked's native Tokens.Table never reaches here.
       return renderTable(token as TableToken, options).join("\n");
     case "blockquote":
       return renderBlockquote(token, options);
@@ -206,9 +182,7 @@ function renderBlock(token: GuideToken, options: MarkdownRenderOptions): string 
   }
 }
 
-// Top-level entry point: a guide's (or a symbol's) full token array to a
-// ready-to-print ANSI string. Pure — no filesystem, no process.stdout/env
-// access (that's resolveRenderOptions in ansi.ts, called by the CLI layer).
+// Top-level entry point: a token array to a ready-to-print ANSI string. Pure — no filesystem or process access.
 export function renderTokens(tokens: unknown, options: MarkdownRenderOptions): string {
   const blocks: string[] = [];
   for (const token of asGuideTokens(tokens)) {
