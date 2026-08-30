@@ -96,9 +96,17 @@ Known entries, verified — these four are the ones naive path mapping gets wron
   "providers":                       "components",
   "middleware":                      "middlewares",
   "fundamentals/injection-scopes":   "fundamentals/provider-scopes",
-  "fundamentals/custom-providers":   "fundamentals/custom-providers"
+  "fundamentals/custom-providers":   "fundamentals/dependency-injection"
 }
 ```
+
+The fourth entry was previously documented as an identity mapping
+(`fundamentals/custom-providers` → itself). Re-verified against the current
+`fundamentals.routes.ts` in Phase 2: the URL redirects through `dependency-injection`
+→ `custom-providers`, served by `DependencyInjectionComponent` (source directory
+`dependency-injection/`) — there is no `fundamentals/custom-providers.md`, so the
+identity mapping would violate the invariant below. Upstream renamed the component
+and file since this was written; not a routing-parser bug.
 
 **Invariant:** every value resolves to a key in `guides.json`. Build fails otherwise.
 
