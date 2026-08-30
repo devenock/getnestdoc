@@ -1,14 +1,15 @@
 // Produces data/aliases.json, and rewrites data/guides.json's internal links
 // using it. Build-time only, run alongside build-guides.ts (ARCHITECTURE.md
 // §6.1) — never at install time, never at runtime.
+import ts from "typescript";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fetchAndExtractRepo, fetchSourceCommit } from "./lib/fetch-docs-repo.ts";
-import { buildUrlToSlug } from "./lib/aliases-transform.ts";
+import { fetchAndExtractRepo, fetchSourceCommit } from "../src/nest/update/fetch-docs-repo.ts";
+import { buildUrlToSlug } from "../src/nest/update/aliases-transform.ts";
 import type { AliasFile } from "./lib/aliases-types.ts";
 import type { GuidesFile } from "./lib/guides-types.ts";
-import { rewriteInternalLinks } from "./lib/rewrite-links.ts";
+import { rewriteInternalLinks } from "../src/nest/update/rewrite-links.ts";
 
 function countInternalLinks(value: unknown): number {
   if (Array.isArray(value)) return value.reduce((sum: number, v) => sum + countInternalLinks(v), 0);
@@ -36,7 +37,7 @@ async function main(): Promise<void> {
     const appRoutesPath = join(repoRoot, "src", "app", "app.routes.ts");
     const pagesRoot = join(repoRoot, "src", "app", "homepage", "pages");
 
-    const urlToSlug = buildUrlToSlug(appRoutesPath, pagesRoot, guideSlugs);
+    const urlToSlug = buildUrlToSlug(ts, appRoutesPath, pagesRoot, guideSlugs);
 
     const aliasFile: AliasFile = {
       version: 1,

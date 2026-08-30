@@ -19,12 +19,15 @@
     "build": "node scripts/bundle.ts",
     "build:guides": "node scripts/build-guides.ts",
     "build:aliases": "node scripts/build-aliases.ts",
+    "build:names": "node scripts/build-names.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "bench": "node scripts/bench.ts"
   },
   "//typescript": "Pinned exact, no caret. 7.x is the native Go port and removes the JS Compiler API (createSourceFile, createProgram). See docs/0001-pin-typescript-6.md.",
+  "//marked": "Runtime dependency of `nest-doc update` only (src/nest/update/), lazy-loaded the same way typescript is — see marked-loader.ts. Left unpinned (caret) unlike typescript: marked's parser API is stable across its majors, this project doesn't touch its Compiler-API-equivalent internals.",
   "dependencies": {
     "commander": "^15.0.0",
+    "marked": "^18.0.11",
     "typescript": "6.0.3"
   },
   "devDependencies": {
@@ -33,7 +36,6 @@
     "esbuild": "^0.28.2",
     "eslint": "^10.9.1",
     "eslint-plugin-import-x": "^4.17.1",
-    "marked": "^18.0.11",
     "typescript-eslint": "^8.68.0"
   }
 }

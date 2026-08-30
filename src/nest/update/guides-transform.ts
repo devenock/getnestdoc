@@ -1,6 +1,6 @@
-import { marked } from "marked";
-import type { MarkedToken, Token, Tokens } from "marked";
-import type { CodeToken, Guide, GuideToken, Heading, ImageToken, TableToken } from "./guides-types.ts";
+import type { marked as MarkedSingleton, MarkedToken, Token, Tokens } from "marked";
+import type { CodeToken, GuideToken, Heading, ImageToken, TableToken } from "../../core/render/types.ts";
+import type { Guide } from "../guides/types.ts";
 
 // ---------------------------------------------------------------------------
 // Raw-text normalisation, before marked ever sees the markdown.
@@ -325,7 +325,13 @@ function stripRaw(value: unknown): unknown {
 // Top-level pipeline for one guide file.
 // ---------------------------------------------------------------------------
 
-export function transformMarkdown(rawMarkdown: string, file: string): Pick<Guide, "title" | "headings" | "tokens"> {
+// `marked` is threaded through as a parameter, not imported statically — this
+// module is reached from the runtime `nest-doc update` path (src/nest/update.ts),
+// not just build-time scripts, and a static `import { marked } from "marked"`
+// gets hoisted into the bundle and eagerly evaluated on every CLI invocation
+// regardless of dynamic-import wrapping elsewhere (verified — the same ESM
+// hoisting behavior documented at core/extract/typescript-loader.ts).
+export function transformMarkdown(marked: typeof MarkedSingleton, rawMarkdown: string, file: string): Pick<Guide, "title" | "headings" | "tokens"> {
   const normalized = normalizeSource(rawMarkdown);
   const { text, placeholders } = extractHtmlBlocks(normalized);
   // marked.lexer() returns Token[] (MarkedToken | Tokens.Generic); without custom

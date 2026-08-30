@@ -1,10 +1,11 @@
 // Produces data/guides.json. Build-time only, run on a schedule and before each
 // release (ARCHITECTURE.md §6.1) — never at install time, never at runtime.
+import { marked } from "marked";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { fetchAndExtractRepo, fetchSourceCommit } from "./lib/fetch-docs-repo.ts";
-import { transformMarkdown } from "./lib/guides-transform.ts";
+import { fetchAndExtractRepo, fetchSourceCommit } from "../src/nest/update/fetch-docs-repo.ts";
+import { transformMarkdown } from "../src/nest/update/guides-transform.ts";
 import type { CodeToken, Guide, GuidesFile } from "./lib/guides-types.ts";
 
 const EXPECTED_GUIDE_COUNT = 143;
@@ -51,7 +52,7 @@ async function main(): Promise<void> {
       const file = relative(contentDir, filePath);
       const slug = file.replace(/\.md$/, "");
       const raw = readFileSync(filePath, "utf8");
-      const { title, headings, tokens } = transformMarkdown(raw, file);
+      const { title, headings, tokens } = transformMarkdown(marked, raw, file);
       guides[slug] = { slug, title, file, headings, tokens };
     }
 

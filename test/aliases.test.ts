@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildUrlToSlug } from "../scripts/lib/aliases-transform.ts";
-import { transformMarkdown } from "../scripts/lib/guides-transform.ts";
-import { rewriteInternalLinks } from "../scripts/lib/rewrite-links.ts";
+import ts from "typescript";
+import { marked } from "marked";
+import { buildUrlToSlug } from "../src/nest/update/aliases-transform.ts";
+import { transformMarkdown } from "../src/nest/update/guides-transform.ts";
+import { rewriteInternalLinks } from "../src/nest/update/rewrite-links.ts";
 import type { GuideToken } from "../scripts/lib/guides-types.ts";
 
 const CONTENT_ROOT = fileURLToPath(new URL("./fixtures/docs-snapshot/content", import.meta.url));
@@ -50,12 +52,12 @@ before(() => {
     const file = relative(CONTENT_ROOT, filePath);
     const slug = file.replace(/\.md$/, "");
     const raw = readFileSync(filePath, "utf8");
-    const { tokens } = transformMarkdown(raw, file);
+    const { tokens } = transformMarkdown(marked, raw, file);
     guideSlugs.add(slug);
     guideTokensBySlug.set(slug, tokens);
   }
 
-  urlToSlug = buildUrlToSlug(APP_ROUTES_PATH, PAGES_ROOT, guideSlugs);
+  urlToSlug = buildUrlToSlug(ts, APP_ROUTES_PATH, PAGES_ROOT, guideSlugs);
 });
 
 test("the four known naive-mapping-defeating entries resolve", () => {

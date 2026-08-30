@@ -15,9 +15,11 @@ const NEST_OPTIONAL_PEERS = [
   "cache-manager",
 ];
 
-// `typescript` is a runtime dependency, lazy-imported on the symbol path only,
-// and deliberately not bundled (40 MB). See ADR-0001, ARCHITECTURE.md §8.
-const external = [...NEST_OPTIONAL_PEERS, "typescript"];
+// `typescript` and `marked` are both runtime dependencies lazy-imported on a
+// single path each (the symbol path, and `nest-doc update` respectively) and
+// deliberately not bundled — see ADR-0001, ARCHITECTURE.md §8, and
+// src/nest/update/marked-loader.ts.
+const external = [...NEST_OPTIONAL_PEERS, "typescript", "marked"];
 
 await build({
   entryPoints: ["src/main.ts"],

@@ -1,4 +1,4 @@
-import type { InternalLinkToken } from "./guides-types.ts";
+import type { InternalLinkToken } from "../../core/render/types.ts";
 
 // A guide's internal links appear in two forms in the real corpus: relative
 // (`/fundamentals/injection-scopes`, the SPEC.md-documented form) and absolute

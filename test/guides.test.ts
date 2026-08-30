@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { transformMarkdown } from "../scripts/lib/guides-transform.ts";
+import { marked } from "marked";
+import { transformMarkdown } from "../src/nest/update/guides-transform.ts";
 import type { CodeToken, GuideToken } from "../scripts/lib/guides-types.ts";
 
 const FIXTURES_ROOT = fileURLToPath(new URL("./fixtures/docs-snapshot/content", import.meta.url));
@@ -32,7 +33,7 @@ before(() => {
   guides = files.map((filePath) => {
     const file = relative(FIXTURES_ROOT, filePath);
     const raw = readFileSync(filePath, "utf8");
-    const { tokens } = transformMarkdown(raw, file);
+    const { tokens } = transformMarkdown(marked, raw, file);
     return { file, raw, tokens };
   });
 });

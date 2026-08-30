@@ -1,6 +1,14 @@
-import ts from "typescript";
+import type TS from "typescript";
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
+
+// `ts` is threaded through every function here as a parameter rather than
+// imported statically — this module is reached from the runtime `nest-doc
+// update` path (src/nest/update.ts), not just build-time scripts, and a
+// static `import ts from "typescript"` gets hoisted into the bundle and
+// eagerly evaluated on every CLI invocation regardless of dynamic-import
+// wrapping elsewhere (verified — see core/extract/typescript-loader.ts,
+// which this mirrors exactly).
 
 // One entry from an Angular route array. `slug` is the resolved content guide
 // slug for a `component:` route (see resolveComponentSlug below) — undefined
@@ -17,15 +25,15 @@ export type ParsedRoute = {
   loadChildrenSpec?: string;
 };
 
-function findObjectProp(obj: ts.ObjectLiteralExpression, name: string): ts.PropertyAssignment | undefined {
+function findObjectProp(ts: typeof TS, obj: TS.ObjectLiteralExpression, name: string): TS.PropertyAssignment | undefined {
   return obj.properties.find(
-    (p): p is ts.PropertyAssignment => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === name,
+    (p): p is TS.PropertyAssignment => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === name,
   );
 }
 
-function findLoadChildrenImportSpec(initializer: ts.Expression): string | undefined {
+function findLoadChildrenImportSpec(ts: typeof TS, initializer: TS.Expression): string | undefined {
   let spec: string | undefined;
-  function visit(node: ts.Node): void {
+  function visit(node: TS.Node): void {
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const arg = node.arguments[0];
       if (arg && ts.isStringLiteral(arg)) spec = arg.text;
@@ -46,7 +54,8 @@ function resolveComponentSlug(fileDir: string, importSpec: string, pagesRoot: st
 }
 
 function parseRouteArray(
-  array: ts.ArrayLiteralExpression,
+  ts: typeof TS,
+  array: TS.ArrayLiteralExpression,
   imports: Map<string, string>,
   fileDir: string,
   pagesRoot: string,
@@ -56,34 +65,34 @@ function parseRouteArray(
   for (const element of array.elements) {
     if (!ts.isObjectLiteralExpression(element)) continue;
 
-    const pathProp = findObjectProp(element, "path");
+    const pathProp = findObjectProp(ts, element, "path");
     const path = pathProp && ts.isStringLiteral(pathProp.initializer) ? pathProp.initializer.text : "";
 
     const route: ParsedRoute = { path };
 
-    const childrenProp = findObjectProp(element, "children");
+    const childrenProp = findObjectProp(ts, element, "children");
     if (childrenProp && ts.isArrayLiteralExpression(childrenProp.initializer)) {
-      route.children = parseRouteArray(childrenProp.initializer, imports, fileDir, pagesRoot);
+      route.children = parseRouteArray(ts, childrenProp.initializer, imports, fileDir, pagesRoot);
     }
 
     // A route with both `component` and `children` is a structural layout
     // wrapper, not a content page — verified true for exactly one route in
     // the whole real tree (the root HomepageComponent). Its children still
     // get walked above; it just contributes no slug of its own.
-    const componentProp = findObjectProp(element, "component");
+    const componentProp = findObjectProp(ts, element, "component");
     if (componentProp && ts.isIdentifier(componentProp.initializer) && !route.children) {
       const spec = imports.get(componentProp.initializer.text);
       if (spec) route.slug = resolveComponentSlug(fileDir, spec, pagesRoot);
     }
 
-    const redirectToProp = findObjectProp(element, "redirectTo");
+    const redirectToProp = findObjectProp(ts, element, "redirectTo");
     if (redirectToProp && ts.isStringLiteral(redirectToProp.initializer)) {
       route.redirectTo = redirectToProp.initializer.text;
     }
 
-    const loadChildrenProp = findObjectProp(element, "loadChildren");
+    const loadChildrenProp = findObjectProp(ts, element, "loadChildren");
     if (loadChildrenProp) {
-      const spec = findLoadChildrenImportSpec(loadChildrenProp.initializer);
+      const spec = findLoadChildrenImportSpec(ts, loadChildrenProp.initializer);
       if (spec) route.loadChildrenSpec = spec;
     }
 
@@ -97,7 +106,7 @@ function parseRouteArray(
 // the directory the file lives in (for resolving relative component/
 // loadChildren imports); `pagesRoot` is the `homepage/pages` directory every
 // component's guide slug is computed relative to.
-export function parseRoutesFile(sourceText: string, fileName: string, fileDir: string, pagesRoot: string): ParsedRoute[] {
+export function parseRoutesFile(ts: typeof TS, sourceText: string, fileName: string, fileDir: string, pagesRoot: string): ParsedRoute[] {
   const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true);
 
   const imports = new Map<string, string>();
@@ -115,7 +124,7 @@ export function parseRoutesFile(sourceText: string, fileName: string, fileDir: s
     }
   });
 
-  let routesArray: ts.ArrayLiteralExpression | undefined;
+  let routesArray: TS.ArrayLiteralExpression | undefined;
   ts.forEachChild(sourceFile, (node) => {
     if (!ts.isVariableStatement(node)) return;
     for (const decl of node.declarationList.declarations) {
@@ -129,7 +138,7 @@ export function parseRoutesFile(sourceText: string, fileName: string, fileDir: s
     throw new Error(`${fileName}: no exported route array found`);
   }
 
-  return parseRouteArray(routesArray, imports, fileDir, pagesRoot);
+  return parseRouteArray(ts, routesArray, imports, fileDir, pagesRoot);
 }
 
 // Walks the full route graph starting from app.routes.ts, following inline
@@ -137,7 +146,7 @@ export function parseRoutesFile(sourceText: string, fileName: string, fileDir: s
 // encountered, accumulating URL path segments as it goes. Not a pure function
 // (it reads files), but it's the one graph-walk both build-aliases.ts and
 // test/aliases.test.ts need, so it lives here rather than being duplicated.
-export function buildUrlToSlug(appRoutesPath: string, pagesRoot: string, guideSlugs: Set<string>): Map<string, string> {
+export function buildUrlToSlug(ts: typeof TS, appRoutesPath: string, pagesRoot: string, guideSlugs: Set<string>): Map<string, string> {
   const table = new Map<string, string>();
 
   function walk(routes: ParsedRoute[], urlPrefix: string[], fileDir: string): void {
@@ -167,14 +176,14 @@ export function buildUrlToSlug(appRoutesPath: string, pagesRoot: string, guideSl
         const childAbsPath = `${resolve(fileDir, route.loadChildrenSpec)}.ts`;
         const childDir = dirname(childAbsPath);
         const childText = readFileSync(childAbsPath, "utf8");
-        const childRoutes = parseRoutesFile(childText, childAbsPath, childDir, pagesRoot);
+        const childRoutes = parseRoutesFile(ts, childText, childAbsPath, childDir, pagesRoot);
         walk(childRoutes, urlParts, childDir);
       }
     }
   }
 
   const appDir = dirname(appRoutesPath);
-  const rootRoutes = parseRoutesFile(readFileSync(appRoutesPath, "utf8"), appRoutesPath, appDir, pagesRoot);
+  const rootRoutes = parseRoutesFile(ts, readFileSync(appRoutesPath, "utf8"), appRoutesPath, appDir, pagesRoot);
   walk(rootRoutes, [], appDir);
 
   return table;
