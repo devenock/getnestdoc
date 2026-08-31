@@ -46,17 +46,17 @@ jobs:
           node-version: "22.22.2"
           registry-url: "https://registry.npmjs.org"
 
-      # Trusted Publishing needs npm 11.5.1+; setup-node's bundled version
-      # may lag behind, so pin explicitly rather than trust whatever ships.
-      - run: npm install -g npm@latest
-
       - run: npm ci
       - run: npm run build
 
+      # Trusted Publishing needs npm 11.5.1+; setup-node's bundled version
+      # may lag behind. `npx npm@latest` runs a fresh npm just for this
+      # command instead of a global install, which failed here once
+      # already for reasons unrelated to publishing (see run 33413356850).
       - name: Publish
         run: |
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
-            npm publish --tag beta
+            npx --yes npm@latest publish --tag beta
           else
-            npm publish
+            npx --yes npm@latest publish
           fi
