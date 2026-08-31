@@ -25,6 +25,13 @@ test("nest-doc --help prints usage and exits 0", () => {
   assert.match(result.stdout, /Usage: nest-doc/);
 });
 
+test("nest-doc -v is a shorthand for --version", () => {
+  const result = spawnSync(process.execPath, [BIN, "-v"], { encoding: "utf8" });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), pkg.version);
+});
+
 test("nest-doc --version resolves from an unrelated working directory", () => {
   const result = spawnSync(process.execPath, [BIN, "--version"], {
     encoding: "utf8",
