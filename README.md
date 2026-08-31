@@ -98,6 +98,10 @@ It has to beat alt-tabbing to a browser or there's no point. Target is under 150
 - **Not a TUI.** No menus, no persistent state, no navigation beyond what your pager already gives you. It prints and exits — long output pages automatically, that's the only exception.
 - **Not official.** Unaffiliated with the NestJS project.
 
+## Contributing
+
+Bug reports, questions, and PRs are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup and conventions. Found a security issue? See [`SECURITY.md`](./SECURITY.md) instead of opening a public issue. This project follows a [Code of Conduct](./CODE_OF_CONDUCT.md).
+
 ## Attribution
 
 Guide content is from [nestjs/docs.nestjs.com](https://github.com/nestjs/docs.nestjs.com), MIT licensed, copyright © 2017-present Kamil Myśliwiec. Vendored and reformatted for terminal display; the text is theirs.
