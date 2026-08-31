@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0](https://github.com/devenock/getnestdoc/compare/v0.1.2...v0.2.0) (2026-08-31)
+
+
+### Features
+
+* broaden npm keywords for discoverability ([966df15](https://github.com/devenock/getnestdoc/commit/966df15d8e716a460e5980b82a6aef7e4ed8298e))
+
+
+### Bug Fixes
+
+* remove dangling release-tag links from CHANGELOG ([970b1e5](https://github.com/devenock/getnestdoc/commit/970b1e552af5577c3a11b3148b49b07758c9577c))
+
 ## 0.1.2 - 2026-08-31
 
 ### Docs
