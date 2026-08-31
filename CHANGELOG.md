@@ -2,7 +2,21 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.2] - 2026-08-31
+
+### Docs
+
+- Added `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md`.
+- Added this changelog and CI/npm/node/license badges to the README.
+- Removed `demo.cast` and its README reference.
+
+### Fixed
+
+- CI: the `@nestjs/swagger` test fixture's `dist/` directory was silently excluded from git by a `.gitignore` ordering bug, so it only ever existed locally — 5 tests failed on every fresh checkout. Reordered the ignore rules so the fixture allowlist wins.
+- CI: widened a cold-extraction sanity check's threshold (800ms → 2000ms) after observing 939.6ms on GitHub Actions' shared runners, well past what local-machine contention alone justified.
+- Regenerated `package-lock.json` to match what the registry currently resolves; the previous lock (produced by `npm install --package-lock-only`) was missing an optional platform dependency subtree, breaking `npm ci` on CI.
+
+## [0.1.1] - 2026-08-31
 
 ### Security
 
@@ -26,5 +40,7 @@ Initial public release.
 - `nest-doc update` to refresh the bundled guide corpus.
 - Auto-paging through `$PAGER`/`less` for output taller than the terminal.
 
-[Unreleased]: https://github.com/devenock/getnestdoc/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/devenock/getnestdoc/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/devenock/getnestdoc/releases/tag/v0.1.2
+[0.1.1]: https://github.com/devenock/getnestdoc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/devenock/getnestdoc/releases/tag/v0.1.0
