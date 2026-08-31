@@ -285,3 +285,36 @@ So the tool's usefulness varies sharply by package — for swagger it can show s
 
 1. The `@publicApi` filter must degrade gracefully. A package with zero tags is not a package with zero public symbols — fall back to showing all exports rather than an empty list.
 2. A symbol with no doc comment renders its signature plus an explicit "No documentation available in this package" line, never a blank section.
+
+---
+
+## ADR-0008: Auto-page long output, don't launch an editor
+
+**Status:** Accepted · **Date:** 2026-08-31
+
+### Context
+
+User feedback after first real-world use: long guides (`custom-decorators` is 165 lines — verified, well past any normal terminal height) are awkward to read as a flat stdout dump, and asked for them to open "in a vim editor" the user could scroll and search.
+
+Launching `vim` specifically has real costs: it assumes vim is installed (not guaranteed — Windows, minimal containers, CI), it takes over the terminal in a way that contradicts this tool's own "prints and exits, not a TUI" position, and — most concretely — it would break piping. `nest-doc x | grep foo` only stays instant and clean today because output goes straight to stdout with no ANSI when stdout isn't a TTY (tested explicitly); a hard-coded editor launch has no piped-mode fallback to speak of.
+
+`git log`, `man`, and `npm help` all solve the identical problem the same way: pipe long output through `$PAGER` (defaulting to `less`) automatically when connected to a real terminal, and never otherwise. `less` already provides scrolling and `/pattern` search — exactly what was asked for — without a new dependency or a new failure mode.
+
+### Decision
+
+Auto-page through `$PAGER`, or `less` by default, when stdout is a real TTY **and** the rendered content is taller than the terminal. Never page when piped, redirected, or when the content already fits on one screen.
+
+Mirrors git's own default `less` invocation: set `LESS=FRX` in the child's environment if the user hasn't already set their own `LESS` (`F` quit-if-it-fits as a defense-in-depth safety net since the height check already filters for this; `R` preserves the ANSI color codes already in the rendered text; `X` leaves the content in scrollback after quitting instead of clearing the screen).
+
+### Rationale
+
+This is the smallest change that satisfies the actual request — scrollable, searchable output — without touching anything about how the tool behaves when it isn't attached to an interactive terminal, which is most of its real usage (piped, redirected, called from scripts/CI, or from an editor's integrated terminal).
+
+A real, verified pitfall: `spawn(command, { shell: true, ... })`, needed so a `$PAGER` value with flags (`"less -S"`) works, does **not** raise Node's `error` event when the command doesn't exist — the shell absorbs it and reports failure the POSIX way, exit code 127, via a normal `close` event. Not checking for that specifically means a broken or missing `$PAGER` silently swallows the entire output — the shell prints its own error to stderr and the tool exits 0 as if paging had succeeded. Caught by testing the actual spawn behavior rather than assuming Node's error handling covered it; fixed by falling back to a plain print whenever the child exits with code 127.
+
+### Consequences
+
+- Scrolling and search work for long output without a new runtime dependency — `less` is assumed present (near-universal on Unix-likes; falls back to a plain print if it isn't, rather than failing).
+- Piped/redirected/short output is completely unaffected — verified via the full integration suite (spawned via `spawnSync`, never a TTY) and a dedicated test asserting a 165-line guide still prints in full when spawned non-interactively.
+- `$PAGER` is respected for users who already have one configured; a missing or broken pager degrades to a plain print rather than losing output.
+- If this doesn't hold up in practice, it's a small, isolated, reversible change — one module (`core/pager.ts`) and six call sites in `cli/doc.command.ts`.

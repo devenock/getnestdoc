@@ -29,6 +29,14 @@ test("nest-doc guards | cat: piped stdout contains zero escape codes", () => {
   assert.ok(!result.stdout.includes("\x1b"), "escape code found in piped (non-TTY) output");
 });
 
+test("a long guide spawned non-interactively prints in full, never pages", () => {
+  const result = run(["custom-decorators"]);
+  assert.equal(result.status, 0);
+  assert.ok(result.stdout.split("\n").length > 100, "expected a long guide to sanity-check the no-paging path");
+  assert.match(result.stdout, /Custom route decorators/);
+  assert.match(result.stdout, /Param decorator/i);
+});
+
 test("nest-doc intercepters: miss suggests on stderr, stdout empty, exits 1", () => {
   const result = run(["intercepters"]);
   assert.equal(result.status, 1);

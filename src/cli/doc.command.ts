@@ -3,6 +3,7 @@ import pkg from "../../package.json" with { type: "json" };
 import { resolveRenderOptions } from "../core/render/ansi.ts";
 import { renderTokens } from "../core/render/markdown.ts";
 import { suggest } from "../core/fuzzy.ts";
+import { writeOutput } from "../core/pager.ts";
 import { loadAliases } from "../nest/aliases.ts";
 import { findGuide, loadGuides } from "../nest/guides/index.ts";
 import { resolvePackageSymbols } from "../nest/symbols.ts";
@@ -91,7 +92,7 @@ export function createProgram(dataDir: string): Command {
         const guide = findGuide(query, guidesFile, aliasFile);
         if (guide) {
           const guideRenderOptions = { ...renderOptions, js: opts.js === true };
-          process.stdout.write(`${renderTokens(guide.tokens, guideRenderOptions)}\n`);
+          await writeOutput(renderTokens(guide.tokens, guideRenderOptions));
           return;
         }
       }
@@ -111,7 +112,7 @@ export function createProgram(dataDir: string): Command {
           if (resolved.status === "found") {
             const symbol = resolved.result.symbols.find((s) => s.name === split.symbolName);
             if (symbol) {
-              process.stdout.write(`${renderSymbol(resolved.result.packageName, resolved.result.packageVersion, symbol, guidesFile, aliasFile, renderOptions)}\n`);
+              await writeOutput(renderSymbol(resolved.result.packageName, resolved.result.packageVersion, symbol, guidesFile, aliasFile, renderOptions));
               return;
             }
           }
@@ -138,7 +139,7 @@ export function createProgram(dataDir: string): Command {
                 process.stderr.write(`${result.error}\n`);
                 process.exitCode = result.exitCode;
               } else {
-                process.stdout.write(`${result.output}\n`);
+                await writeOutput(result.output);
               }
               return;
             }
@@ -146,7 +147,7 @@ export function createProgram(dataDir: string): Command {
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {
-              process.stdout.write(`${bare.output}\n`);
+              await writeOutput(bare.output);
               process.exitCode = bare.exitCode;
               return;
             }
@@ -158,14 +159,14 @@ export function createProgram(dataDir: string): Command {
               process.stderr.write(`${indexResult.error}\n`);
               process.exitCode = indexResult.exitCode;
             } else {
-              process.stdout.write(`${indexResult.output}\n`);
+              await writeOutput(indexResult.output);
             }
             return;
           }
 
           const bare = await renderBareSymbolQuery(query, dataDir, cwd, guidesFile, aliasFile, renderOptions);
           if (bare) {
-            process.stdout.write(`${bare.output}\n`);
+            await writeOutput(bare.output);
             process.exitCode = bare.exitCode;
             return;
           }

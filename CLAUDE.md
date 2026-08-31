@@ -23,6 +23,7 @@ A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `n
 - **Signatures show the author's type aliases**, not expanded structural types. Deliberate — ADR-0002.
 - **Guide slugs don't match URLs.** `/providers` is `components.md`. The alias table is generated from the docs repo's route files, not hand-maintained.
 - **`@@switch` blocks show only TypeScript** by default. The JavaScript half is stored and shown under `--js`.
+- **Long output opens `less` instead of printing.** Only when stdout is a real TTY and the content is taller than it — piped/redirected output is never affected. Deliberate — ADR-0008.
 
 ## Known trap
 
@@ -34,6 +35,7 @@ Barrel extraction must handle **both** `export * from './x.js'` and `export { A,
 - Resolution tested against Nest 10, 11, and 12 fixtures — packaging changed across those majors.
 - Extraction asserts exactly 206 exports for `@nestjs/common@12.0.1`.
 - Benchmark assertions run in CI on every commit.
+- Integration tests spawn the binary via `spawnSync`, never a TTY — the pager path (ADR-0008) is exercised only at the pure-decision level (`test/pager.test.ts`), not end-to-end.
 
 ## Style
 

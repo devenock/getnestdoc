@@ -72,10 +72,9 @@ $ nest-doc @Get                 # same decorator, same answer
 $ nest-doc Get
 ```
 
-Output is plain text when piped, so it composes:
+Long output pages automatically through `$PAGER` (or `less`) when you're at a real terminal — scroll and `/search` like any man page. Piped or redirected output skips paging entirely and stays plain text, so it composes:
 
 ```console
-$ nest-doc interceptors | less
 $ nest-doc --all @nestjs/common | grep -i pipe
 ```
 
@@ -99,7 +98,7 @@ It has to beat alt-tabbing to a browser or there's no point. Target is under 150
 
 - **Not a documentation generator.** [TypeDoc](https://typedoc.org) and [Compodoc](https://compodoc.app) do that well. This reads docs; it doesn't produce them.
 - **Not for your own app.** v1 documents the framework. Compodoc covers your codebase.
-- **Not a TUI.** It prints and exits. Your `$PAGER` is your business.
+- **Not a TUI.** No menus, no persistent state, no navigation beyond what your pager already gives you. It prints and exits — long output pages automatically, that's the only exception.
 - **Not official.** Unaffiliated with the NestJS project.
 
 ## Attribution
