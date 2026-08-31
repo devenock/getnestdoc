@@ -16,9 +16,6 @@ Recorded demo (real output, [`demo.cast`](./demo.cast)):
 $ asciinema play demo.cast
 ```
 
-<!-- Once uploaded to asciinema.org, replace the block above with:
-[![asciicast](https://asciinema.org/a/REPLACE_ME.svg)](https://asciinema.org/a/REPLACE_ME) -->
-
 ## Why
 
 Nest is well documented. That documentation is just hard to reach from a terminal.
