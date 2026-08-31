@@ -1,5 +1,10 @@
 # getnestdoc
 
+[![CI](https://github.com/devenock/getnestdoc/actions/workflows/ci.yml/badge.svg)](https://github.com/devenock/getnestdoc/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/getnestdoc.svg)](https://www.npmjs.com/package/getnestdoc)
+[![node](https://img.shields.io/node/v/getnestdoc.svg)](./package.json)
+[![license](https://img.shields.io/npm/l/getnestdoc.svg)](./LICENSE)
+
 NestJS documentation in your terminal. `go doc`, for Nest.
 
 ```console
@@ -100,7 +105,7 @@ It has to beat alt-tabbing to a browser or there's no point. Target is under 150
 
 ## Contributing
 
-Bug reports, questions, and PRs are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup and conventions. Found a security issue? See [`SECURITY.md`](./SECURITY.md) instead of opening a public issue. This project follows a [Code of Conduct](./CODE_OF_CONDUCT.md).
+Bug reports, questions, and PRs are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup and conventions. Found a security issue? See [`SECURITY.md`](./SECURITY.md) instead of opening a public issue. This project follows a [Code of Conduct](./CODE_OF_CONDUCT.md). Version history is in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Attribution
 
