@@ -1,0 +1,5 @@
+import { DECORATORS } from '../constants.js';
+export const exploreGlobalApiHeaderMetadata = (metatype) => {
+    const headers = Reflect.getMetadata(DECORATORS.API_HEADERS, metatype);
+    return headers ? { root: { parameters: headers }, depth: 1 } : undefined;
+};

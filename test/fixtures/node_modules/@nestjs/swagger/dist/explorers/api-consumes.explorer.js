@@ -1,0 +1,6 @@
+import { DECORATORS } from '../constants.js';
+export const exploreGlobalApiConsumesMetadata = (metatype) => {
+    const consumes = Reflect.getMetadata(DECORATORS.API_CONSUMES, metatype);
+    return consumes ? { consumes } : undefined;
+};
+export const exploreApiConsumesMetadata = (instance, prototype, method) => Reflect.getMetadata(DECORATORS.API_CONSUMES, method);

@@ -90,12 +90,12 @@ test("reports the extraction count and cold extraction time", () => {
   // once typescript is already loaded). That load is unavoidable on a cold
   // path and is exactly why Phase 7's cache matters: a warm lookup skips
   // extractPackage — and therefore this cost — entirely. In isolation this
-  // measures 236-255 ms; observed as high as 401 ms when `npm test` runs
-  // every other file's CPU-bound work (other typescript loads, spawned CLI
-  // processes) concurrently on this machine. 800 ms clears that contention
-  // noise with room to spare; the number itself, not this bound, is what
-  // gets reported and compared against the 207 ms baseline.
-  assert.ok(extractionMs < 800, `extraction took ${extractionMs.toFixed(1)} ms — profile before continuing`);
+  // measures 236-255 ms; observed as high as 401 ms under local `npm test`
+  // contention and 939.6 ms on a GitHub Actions ubuntu-latest runner. 2000 ms
+  // clears both with room to spare; the number itself, not this bound, is
+  // what gets reported and compared against the 207 ms baseline. The real
+  // latency gate is `npm run bench`, run as its own CI step.
+  assert.ok(extractionMs < 2000, `extraction took ${extractionMs.toFixed(1)} ms — profile before continuing`);
 });
 
 // SECURITY REGRESSION — a barrel's `export * from "<specifier>"` is text

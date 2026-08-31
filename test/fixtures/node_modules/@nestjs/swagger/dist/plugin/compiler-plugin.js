@@ -1,0 +1,33 @@
+import { mergePluginOptions } from './merge-options.js';
+import { pluginDebugLogger } from './plugin-debug-logger.js';
+import { isFilenameMatched } from './utils/is-filename-matched.util.js';
+import { ControllerClassVisitor } from './visitors/controller-class.visitor.js';
+import { ModelClassVisitor } from './visitors/model-class.visitor.js';
+const modelClassVisitor = new ModelClassVisitor();
+const controllerClassVisitor = new ControllerClassVisitor();
+export const before = (options, program) => {
+    options = mergePluginOptions(options);
+    if (!program) {
+        const error = `The "program" reference must be provided when using the CLI Plugin. This error is likely caused by the "isolatedModules" compiler option being set to "true".`;
+        pluginDebugLogger.debug(error);
+        throw new Error(error);
+    }
+    const compilerOptions = program.getCompilerOptions();
+    if (compilerOptions.outDir) {
+        options.outDir = compilerOptions.outDir;
+    }
+    if (compilerOptions.rootDir) {
+        options.rootDir = compilerOptions.rootDir;
+    }
+    return (ctx) => {
+        return (sf) => {
+            if (isFilenameMatched(options.dtoFileNameSuffix, sf.fileName)) {
+                return modelClassVisitor.visit(sf, ctx, program, options);
+            }
+            if (isFilenameMatched(options.controllerFileNameSuffix, sf.fileName)) {
+                return controllerClassVisitor.visit(sf, ctx, program, options);
+            }
+            return sf;
+        };
+    };
+};
