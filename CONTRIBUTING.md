@@ -75,3 +75,5 @@ In your PR description:
 - Anything you deliberately left out, and why
 
 Don't bump the version in `package.json` — [release-please](https://github.com/googleapis/release-please) does that from commit messages when its release PR is merged. Use a [Conventional Commits](https://www.conventionalcommits.org/) prefix (`fix:`, `feat:`, `chore:`, `docs:`, and so on) so it bumps correctly.
+
+Merging the release PR creates a git tag, which runs the full test suite and latency budget again, then pauses for the maintainer's manual approval before anything reaches npm — merging the PR does not, by itself, publish anything.
