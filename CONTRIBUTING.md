@@ -74,4 +74,4 @@ In your PR description:
 - What you measured, if the change is latency-relevant
 - Anything you deliberately left out, and why
 
-Don't bump the version in `package.json` — that happens at release time.
+Don't bump the version in `package.json` — [release-please](https://github.com/googleapis/release-please) does that from commit messages when its release PR is merged. Use a [Conventional Commits](https://www.conventionalcommits.org/) prefix (`fix:`, `feat:`, `chore:`, `docs:`, and so on) so it bumps correctly.
