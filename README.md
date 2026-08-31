@@ -15,12 +15,6 @@ $ nest-doc @nestjs/common        # everything the package exports
 
 > Installs as `getnestdoc`, runs as `nest-doc`.
 
-Recorded demo (real output, [`demo.cast`](./demo.cast)):
-
-```console
-$ asciinema play demo.cast
-```
-
 ## Why
 
 Nest is well documented. That documentation is just hard to reach from a terminal.
