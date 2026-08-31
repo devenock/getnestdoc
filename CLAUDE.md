@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Working notes for AI assistance in this repo. Read `ARCHITECTURE.md`, `SPEC.md`, and the ADRs before proposing changes.
+Working notes for AI assistance in this repo. Read `docs/ARCHITECTURE.md`, `docs/SPEC.md`, and `docs/DECISIONS.md` before proposing changes.
 
 ## What this is
 

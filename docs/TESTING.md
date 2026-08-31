@@ -1,6 +1,6 @@
 # Testing
 
-Every change ships with green tests and, where latency is relevant, a measured number. A number not written down is a number that gets argued about — see `STATUS.md`.
+Every change ships with green tests and, where latency is relevant, a measured number against the budget in `scripts/bench.ts`.
 
 ---
 
@@ -27,7 +27,7 @@ Node's type stripping handles **erasable syntax only** — no decorators, no `en
 
 **Integration** — spawn the built binary, assert stdout, stderr, and exit code. Few, but they are the only tests that prove the thing works.
 
-**Benchmark** — wall clock against a threshold, in CI, failing on regression. From Phase 0, before any feature exists.
+**Benchmark** — wall clock against a threshold, in CI, failing on regression.
 
 ---
 
@@ -47,9 +47,7 @@ test/fixtures/
 └── docs-snapshot/                   pinned content/ + routes for corpus tests
 ```
 
-Three Nest majors for `@nestjs/common`, because packaging changed across them and most real projects are not on the newest. `FIXTURES.md` beside them has the full detail on why each one exists.
-
-Generate with `npm pack`, extract, commit. Record the exact version in a `FIXTURES.md` beside them.
+Three Nest majors for `@nestjs/common`, because packaging changed across them and most real projects are not on the newest. Generate with `npm pack`, extract, commit — record the exact version and why in `FIXTURES.md` beside them.
 
 ---
 
@@ -79,4 +77,4 @@ scripts/bench.ts
   → exit 1 if median exceeds the threshold
 ```
 
-Current thresholds and measurements are in `STATUS.md`. Record every new one there — a number not written down is a number that gets argued about.
+Thresholds live in the `--budget` argument at each call site in `scripts/bench.ts`'s own usage and in CI.

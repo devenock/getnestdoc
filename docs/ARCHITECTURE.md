@@ -2,7 +2,7 @@
 
 How `getnestdoc` works, end to end. Read the README's "Why" section first for the motivation; this document is the how.
 
-Every number here was measured, not assumed — see `STATUS.md` for the full log of findings and measurements as they landed.
+Every number here was measured, not assumed — see `DECISIONS.md` for the rationale behind each one.
 
 ---
 
