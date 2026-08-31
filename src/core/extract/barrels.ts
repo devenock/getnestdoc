@@ -1,19 +1,32 @@
 import { existsSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import type { DeclarationEntry } from "./parse.ts";
 import { getExportedDeclarations, getExportStatements, parseSourceFile } from "./parse.ts";
 import { extractJsDoc } from "./jsdoc.ts";
 import { extractSignature } from "./signature.ts";
+import { sanitizeExtractedText } from "./sanitize.ts";
 import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
 import type TS from "typescript";
 
 // Specifiers are written with .js (ESM); rewrite to .d.ts, falling back to <spec>/index.d.ts for directory specifiers (ARCHITECTURE.md §5.1).
-function resolveModuleSpecifier(fromDir: string, specifier: string): string {
+//
+// A specifier is text inside a *third-party* .d.ts file — untrusted,
+// attacker-controlled data, same trust boundary as core/cache/paths.ts's
+// packageVersion. Verified as a real issue: `export * from
+// "../../secret-location/leaked.js"` in a package's own index.d.ts made
+// extractPackage() read and display symbols from a .d.ts file completely
+// outside that package's own directory — a real barrel legitimately never
+// needs to leave its own package root. `packageRoot` constrains it there;
+// undefined means "don't follow this one", the same shape as an unresolvable
+// specifier already had.
+function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot: string): string | undefined {
   const withoutExt = specifier.replace(/\.js$/, "");
   const direct = join(fromDir, `${withoutExt}.d.ts`);
-  if (existsSync(direct)) return direct;
-  return join(fromDir, withoutExt, "index.d.ts");
+  const resolved = existsSync(direct) ? direct : join(fromDir, withoutExt, "index.d.ts");
+
+  const resolvedRoot = resolve(packageRoot) + sep;
+  return resolve(resolved).startsWith(resolvedRoot) ? resolved : undefined;
 }
 
 function buildSymbolRecord(
@@ -30,10 +43,10 @@ function buildSymbolRecord(
   return {
     name: entry.name,
     kind: entry.kind,
-    signature,
-    doc,
-    tags,
-    see,
+    signature: sanitizeExtractedText(signature),
+    doc: sanitizeExtractedText(doc),
+    tags: tags.map((tag) => ({ name: tag.name, text: sanitizeExtractedText(tag.text) })),
+    see: see.map((link) => ({ text: sanitizeExtractedText(link.text), url: sanitizeExtractedText(link.url) })),
     isPublicApi,
     file: relative(packageRoot, filePath),
     line: line + 1, // SPEC.md §3: 1-based
@@ -63,7 +76,8 @@ export async function extractPackage(entryFile: string): Promise<SymbolRecord[]>
 
     const fileDir = dirname(filePath);
     for (const exportStatement of getExportStatements(ts, sourceFile)) {
-      const targetFile = resolveModuleSpecifier(fileDir, exportStatement.specifier);
+      const targetFile = resolveModuleSpecifier(fileDir, exportStatement.specifier, packageRoot);
+      if (!targetFile) continue;
 
       if (exportStatement.kind === "wildcard") {
         visit(targetFile, allowedNames);

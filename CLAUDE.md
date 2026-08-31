@@ -18,6 +18,8 @@ A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `n
 
 **Parse, don't type-check.** Do not reintroduce `ts.createProgram` on the main path. It is 6.3× slower and produces worse signatures. See ADR-0002.
 
+**A package's `package.json` and `.d.ts` files are untrusted input, always.** Same trust level as a network response, not the CLI's own caller — anyone can publish an npm package. Never build a filesystem path from a package field without going through the same containment check `core/cache/paths.ts`/`core/extract/barrels.ts` already do; never add a new `SymbolRecord` string field without running it through `core/extract/sanitize.ts`. Three real, verified vulnerabilities (path traversal, barrel escape, terminal escape-sequence injection) came from skipping exactly this. See ADR-0009.
+
 ## Things that look like bugs but aren't
 
 - **Signatures show the author's type aliases**, not expanded structural types. Deliberate — ADR-0002.

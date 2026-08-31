@@ -1,5 +1,8 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPackage } from "../src/core/extract/barrels.ts";
 import type { SymbolRecord } from "../src/core/extract/types.ts";
@@ -93,4 +96,60 @@ test("reports the extraction count and cold extraction time", () => {
   // noise with room to spare; the number itself, not this bound, is what
   // gets reported and compared against the 207 ms baseline.
   assert.ok(extractionMs < 800, `extraction took ${extractionMs.toFixed(1)} ms — profile before continuing`);
+});
+
+// SECURITY REGRESSION — a barrel's `export * from "<specifier>"` is text
+// inside a *third-party* .d.ts file, not something the CLI's own caller
+// controls. Verified end-to-end against the real built binary: a specifier
+// like "../../secret-location/leaked.js" made extractPackage() read and
+// display a symbol from a .d.ts file completely outside the package's own
+// directory — a real barrel never legitimately needs to leave its own
+// package root. CWE-22, lower severity than the cache path traversal (no
+// write capability, same user/machine, requires knowing a real path to
+// another .d.ts file) but a real boundary violation regardless.
+test("a barrel's export specifier cannot traverse outside the package's own directory", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-barrel-security-test-"));
+  try {
+    const secretDir = join(root, "secret-location");
+    mkdirSync(secretDir, { recursive: true });
+    writeFileSync(join(secretDir, "leaked.d.ts"), `export declare const secretApiKey: string;\n`);
+
+    const packageDir = join(root, "evil-package");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(join(packageDir, "index.d.ts"), `export * from "../secret-location/leaked.js";\n`);
+
+    const symbolsFromMaliciousBarrel = await extractPackage(join(packageDir, "index.d.ts"));
+    assert.equal(symbolsFromMaliciousBarrel.length, 0, "a specifier resolving outside the package root must not be followed at all");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// SECURITY REGRESSION — JSDoc comment text is written by a *third-party*
+// package author, not the CLI's own caller. Verified end-to-end against the
+// real built binary: a raw ESC byte followed by an OSC sequence embedded in
+// a doc comment reached the final terminal output completely unfiltered,
+// byte for byte. Not just cosmetic — some terminals treat OSC 52 as
+// "write to the clipboard", no confirmation prompt, so this is a real
+// clipboard-hijack vector from running `nest-doc <malicious-package>`, not a
+// theoretical one.
+test("a raw escape sequence embedded in a JSDoc comment never reaches the extracted SymbolRecord", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-ansi-security-test-"));
+  try {
+    const packageDir = join(root, "evil-ansi");
+    mkdirSync(packageDir, { recursive: true });
+    const esc = "\x1b";
+    const bel = "\x07";
+    writeFileSync(
+      join(packageDir, "index.d.ts"),
+      `/**\n * innocuous docs ${esc}]0;PWNED-TITLE${bel} more text\n */\nexport declare function totallyNormal(): void;\n`,
+    );
+
+    const [symbol] = await extractPackage(join(packageDir, "index.d.ts"));
+    assert.ok(symbol, "totallyNormal not found");
+    assert.ok(!symbol!.doc.includes(esc), `doc still contains a raw ESC byte: ${JSON.stringify(symbol!.doc)}`);
+    assert.ok(!symbol!.doc.includes(bel), `doc still contains a raw BEL byte: ${JSON.stringify(symbol!.doc)}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

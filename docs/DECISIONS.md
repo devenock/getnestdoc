@@ -321,3 +321,39 @@ Two real, verified pitfalls, both caught by testing the actual behavior rather t
 - Piped/redirected/short output is completely unaffected — verified via the full integration suite (spawned via `spawnSync`, never a TTY) and a dedicated test asserting a 165-line guide still prints in full when spawned non-interactively.
 - `$PAGER` is respected for users who already have one configured; a missing or broken pager degrades to a plain print rather than losing output.
 - If this doesn't hold up in practice, it's a small, isolated, reversible change — one module (`core/pager.ts`) and six call sites in `cli/doc.command.ts`.
+
+---
+
+## ADR-0009: Sanitize everything a third-party package controls
+
+**Status:** Accepted · **Date:** 2026-08-31
+
+### Context
+
+A security review prompted by real-world adoption — the tool is installed globally and runs against `node_modules` in developers' actual, sometimes sensitive, projects. Three real, verified vulnerabilities were found by constructing and running actual exploits against the built binary, not by inspecting code for theoretical issues. All three share one root cause: package.json fields and `.d.ts` file content are **third-party, attacker-controlled data** — the same trust level as a network response — but were being treated as trusted input throughout the resolve/extract/cache pipeline.
+
+**1. Cache path traversal (CWE-22, the serious one).** `core/cache/paths.ts`'s `getCacheFilePath` built the cache filename directly from a package's own `package.json` `"version"` field, with no sanitization at all. A crafted `"version": "../../../../../../tmp/PWNED"` made `nest-doc <that-package>` write a real file — with attacker-controlled JSON content — to an arbitrary path outside the cache directory, verified end-to-end against the real built binary. Worse, `readCache`'s corrupt-file self-heal (`rmSync` on a JSON-parse failure) used the same unsanitized path, giving an **arbitrary file delete** primitive too: point the traversal at any real, non-JSON file — nearly anything — and the next lookup deletes it. Both trigger from nothing more than a victim running `nest-doc <package-name>` on a package they already have installed; no need for them to have deliberately queried anything suspicious.
+
+**2. Barrel traversal outside the package root (CWE-22, lower severity).** `core/extract/barrels.ts` follows `export * from "<specifier>"` wherever a `.d.ts` file's own text points, with no boundary check. A crafted `export * from "../../secret-location/leaked.js"` in a package's own entry file made `extractPackage()` read and display a symbol from a `.d.ts` file completely outside that package's directory — verified end-to-end. Lower severity than #1 (read-only, no write/delete capability, requires the attacker to know a real path to another `.d.ts` file, same user/machine so no privilege or exfiltration boundary is crossed), but a real violation of what "look up docs for package X" should be able to touch.
+
+**3. Terminal escape-sequence injection (the one that could reach furthest).** Nothing stripped control characters from extracted JSDoc text before it reached the terminal. A doc comment containing a raw ESC byte followed by an OSC sequence reached the final rendered output completely unfiltered, byte for byte — verified with `cat -v`. Not cosmetic: some terminals (iTerm2, Windows Terminal, and others) interpret OSC 52 as "write to the clipboard", no confirmation prompt. A malicious package's JSDoc could silently replace what a user copies next — a credential, a command they paste later without looking — just from running `nest-doc <malicious-package>`.
+
+### Decision
+
+Sanitize at every point untrusted data crosses into the system, rather than trying to catch it at render time:
+
+- **Cache paths** (`core/cache/paths.ts`): replace every `/` and `\` in both `packageName` and `packageVersion` before they ever become part of a filename. Without a path separator left in either string, there is no way to construct a new path segment, so the flattened result can never resolve outside the cache directory — verified across 3 to 20 levels of `../`, every one collapses into one ordinary, if ugly, filename. `getCacheFilePath` also re-validates the final resolved path stays inside `cacheDir` as a defense-in-depth backstop (returns `undefined` if not; both `readCache`/`writeCache` treat that exactly like an unwritable cache directory), for whatever the character replacement doesn't anticipate rather than for the cases already covered.
+- **Barrel following** (`core/extract/barrels.ts`): `resolveModuleSpecifier` now takes the package's own root directory and refuses to return a path outside it. Verified this doesn't break any real barrel: all three real fixtures (`@nestjs/common` 206, `@nestjs/core` 54, `@nestjs/swagger` 160 — the latter with a nested `dist/` entry point, the case most likely to have false-positived) extract the exact same counts as before.
+- **Extracted text** (`core/extract/sanitize.ts`): every string field of a `SymbolRecord` — `doc`, `signature`, each tag's text, each `@see` link's text and URL — has every C0 control byte stripped except `\t`/`\n`, at the one point (`buildSymbolRecord`) all of them get assembled. This runs on raw source text, before any of the tool's *own* legitimate ANSI colour codes are added at render time, so it can't strip its own styling — only text a third party wrote. Re-applied on every cache **read**, not just at extraction: a cache entry written by a pre-fix version of this tool (or hand-tampered on disk) could already have the raw bytes baked in, and upgrading the tool doesn't retroactively clean an existing `~/.cache/getnestdoc/*.json` — a cache entry only invalidates on a package version bump, not a tool version bump.
+
+### Rationale
+
+All three follow the same principle: this tool reads two kinds of input the CLI's own caller never typed — a third-party package's `package.json` and `.d.ts` files, and (separately, lower trust concern since it's vendored from one fixed, vetted repository at build time) the guide corpus. The first is genuinely adversarial-shaped: anyone can publish an npm package, and "a developer runs `nest-doc <package-name>` on something they already depend on" is an ordinary, expected use of this tool, not an edge case. Every fix sanitizes at the boundary where that data enters the system — cache paths at construction, barrel targets at resolution, symbol text at assembly — so nothing downstream (rendering, JSON serialization, a future feature) has to remember to think about it again.
+
+`npm audit` reported zero known vulnerabilities in the dependency tree at time of writing; the fetch-and-extract path in `nest-doc update` was checked too — the system `tar` binary already refuses `../`-containing entries on its own (verified directly: a crafted tarball entry was rejected with "Path contains '..'"), and `runUpdate`'s atomic writes mean a failed extraction never touches the existing, working `guides.json`/`aliases.json`.
+
+### Consequences
+
+- Every real fixture (`@nestjs/common`, `@nestjs/core`, `@nestjs/swagger`) extracts identical symbol counts before and after — sanitization touches only genuinely dangerous bytes, verified by the exact-count assertions already in place for this reason (TESTING.md's own non-negotiable).
+- Three dedicated regression tests, each built by reproducing the real exploit against the built binary first and only then turning it into a unit test — `test/cache.test.ts` (path traversal in both directions, write and delete) and `test/extract.test.ts` (barrel escape, escape-sequence stripping, including the stale-cache case).
+- Guide content is not run through the same escape-sequence stripping — it's vendored from one fixed, trusted repository at build time (ADR-0004), not arbitrary user-installed packages, a materially different trust level. Worth revisiting only if that trust model ever changes.
