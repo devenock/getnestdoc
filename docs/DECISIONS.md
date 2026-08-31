@@ -304,13 +304,16 @@ Launching `vim` specifically has real costs: it assumes vim is installed (not gu
 
 Auto-page through `$PAGER`, or `less` by default, when stdout is a real TTY **and** the rendered content is taller than the terminal. Never page when piped, redirected, or when the content already fits on one screen.
 
-Mirrors git's own default `less` invocation: set `LESS=FRX` in the child's environment if the user hasn't already set their own `LESS` (`F` quit-if-it-fits as a defense-in-depth safety net since the height check already filters for this; `R` preserves the ANSI color codes already in the rendered text; `X` leaves the content in scrollback after quitting instead of clearing the screen).
+Set `LESS=FR` in the child's environment if the user hasn't already set their own `LESS`: `F` quit-if-it-fits as a defense-in-depth safety net since the height check above already filters for this; `R` preserves the ANSI color codes already in the rendered text.
 
 ### Rationale
 
 This is the smallest change that satisfies the actual request — scrollable, searchable output — without touching anything about how the tool behaves when it isn't attached to an interactive terminal, which is most of its real usage (piped, redirected, called from scripts/CI, or from an editor's integrated terminal).
 
-A real, verified pitfall: `spawn(command, { shell: true, ... })`, needed so a `$PAGER` value with flags (`"less -S"`) works, does **not** raise Node's `error` event when the command doesn't exist — the shell absorbs it and reports failure the POSIX way, exit code 127, via a normal `close` event. Not checking for that specifically means a broken or missing `$PAGER` silently swallows the entire output — the shell prints its own error to stderr and the tool exits 0 as if paging had succeeded. Caught by testing the actual spawn behavior rather than assuming Node's error handling covered it; fixed by falling back to a plain print whenever the child exits with code 127.
+Two real, verified pitfalls, both caught by testing the actual behavior rather than assuming:
+
+1. `spawn(command, { shell: true, ... })`, needed so a `$PAGER` value with flags (`"less -S"`) works, does **not** raise Node's `error` event when the command doesn't exist — the shell absorbs it and reports failure the POSIX way, exit code 127, via a normal `close` event. Not checking for that specifically means a broken or missing `$PAGER` silently swallows the entire output — the shell prints its own error to stderr and the tool exits 0 as if paging had succeeded. Fixed by falling back to a plain print whenever the child exits with code 127.
+2. The first version set `LESS=FRX`, copying git's own default flags verbatim. `X` (`--no-init`) skips `less`'s alternate-screen switch (the terminal's `smcup`/`rmcup` sequences) — real-world use surfaced this immediately as duplicated content: every screenful `less` draws while scrolling piles onto the same buffer instead of replacing the last one, since nothing ever clears. Git sets `X` deliberately, for a reason that doesn't hold here — it wants diff/log output left visible in scrollback after quitting. A documentation reader should behave like `man`/`vim`: clear, scroll in place, restore the terminal on exit. Dropped `X` entirely.
 
 ### Consequences
 

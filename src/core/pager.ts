@@ -8,6 +8,9 @@ export function decidePager(lineCount: number, isTTY: boolean, rows: number | un
   return { page: true, command: pagerEnv && pagerEnv.length > 0 ? pagerEnv : "less" };
 }
 
+// F: quit if the content fits on one screen (defense-in-depth; decidePager already filters for this). R: preserve our ANSI colors. Deliberately not X ("no-init") — X skips less's alternate-screen switch, so it never clears between redraws: every screenful piles onto the same buffer instead of replacing the last one (verified: this exact symptom, duplicated content on every scroll — git sets X too, but for leaving diff output in scrollback after quitting, which doesn't apply to a documentation reader).
+export const DEFAULT_LESS_OPTIONS = "FR";
+
 // `shell: true` so a $PAGER value with flags ("less -S") works. stdin is a pipe carrying our content; the pager still reads its own keystrokes straight from the controlling terminal, exactly as it would in `nest-doc x | less` — the shell just isn't the one setting up the pipe here.
 //
 // A missing pager binary does NOT raise Node's 'error' event under shell:true
@@ -27,7 +30,7 @@ function runPager(command: string, text: string): Promise<void> {
     };
 
     const env = { ...process.env };
-    if (!env.LESS) env.LESS = "FRX";
+    if (!env.LESS) env.LESS = DEFAULT_LESS_OPTIONS;
 
     const child = spawn(command, { shell: true, stdio: ["pipe", "inherit", "inherit"], env });
 

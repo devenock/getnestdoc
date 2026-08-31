@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decidePager } from "../src/core/pager.ts";
+import { decidePager, DEFAULT_LESS_OPTIONS } from "../src/core/pager.ts";
 
 test("never pages when stdout isn't a real terminal, regardless of length", () => {
   assert.deepEqual(decidePager(500, false, 40, undefined), { page: false });
@@ -28,4 +28,13 @@ test("honours $PAGER over the less default", () => {
 
 test("an empty $PAGER falls back to less rather than trying to spawn an empty command", () => {
   assert.deepEqual(decidePager(100, true, 40, ""), { page: true, command: "less" });
+});
+
+// Regression guard: X ("--no-init") skips less's alternate-screen switch, so
+// it never clears between redraws — verified in real use as duplicated
+// content on every scroll. Must never come back, even by copying another
+// tool's LESS convention (git deliberately sets X, for a reason that doesn't
+// apply here).
+test("the default LESS options never include X (would break clean redraws while scrolling)", () => {
+  assert.ok(!DEFAULT_LESS_OPTIONS.includes("X"), `DEFAULT_LESS_OPTIONS is "${DEFAULT_LESS_OPTIONS}" — must not contain X`);
 });
