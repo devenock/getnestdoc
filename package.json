@@ -17,7 +17,11 @@
     "nest",
     "documentation",
     "cli",
-    "docs"
+    "docs",
+    "terminal",
+    "typescript",
+    "man-pages",
+    "developer-tools"
   ],
   "type": "module",
   "bin": {
