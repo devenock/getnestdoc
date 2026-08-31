@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "nest-doc": "./dist/nest-doc.mjs"
+    "nest-doc": "dist/nest-doc.mjs"
   },
   "files": [
     "dist",
@@ -24,7 +24,7 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "bench": "node scripts/bench.ts"
   },
-  "//typescript": "Pinned exact, no caret. 7.x is the native Go port and removes the JS Compiler API (createSourceFile, createProgram). See docs/0001-pin-typescript-6.md.",
+  "//typescript": "Pinned exact, no caret. 7.x is the native Go port and removes the JS Compiler API (createSourceFile, createProgram). See docs/DECISIONS.md, ADR-0001.",
   "//marked": "Runtime dependency of `nest-doc update` only (src/nest/update/), lazy-loaded the same way typescript is — see marked-loader.ts. Left unpinned (caret) unlike typescript: marked's parser API is stable across its majors, this project doesn't touch its Compiler-API-equivalent internals.",
   "dependencies": {
     "commander": "^15.0.0",
