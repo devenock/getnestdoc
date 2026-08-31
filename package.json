@@ -3,6 +3,22 @@
   "version": "0.1.0",
   "description": "A terminal documentation reader for NestJS.",
   "license": "MIT",
+  "author": "devenock",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devenock/getnestdoc.git"
+  },
+  "homepage": "https://github.com/devenock/getnestdoc#readme",
+  "bugs": {
+    "url": "https://github.com/devenock/getnestdoc/issues"
+  },
+  "keywords": [
+    "nestjs",
+    "nest",
+    "documentation",
+    "cli",
+    "docs"
+  ],
   "type": "module",
   "bin": {
     "nest-doc": "dist/nest-doc.mjs"
