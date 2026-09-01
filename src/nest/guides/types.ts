@@ -1,6 +1,6 @@
 import type { GuideToken, Heading } from "../../core/render/types.ts";
 
-// Mirrors SPEC.md §1. The Nest-specific file-level wrapper around the generic token contract (core/render/types.ts) — lives on the nest/ side of the core/nest boundary.
+// The built guide corpus: every guide keyed by slug, with its tokens and headings.
 export type GuidesFile = {
   version: 1;
   generatedAt: string;

@@ -17,14 +17,14 @@ import type { GuidesFile } from "../nest/guides/types.ts";
 import type { AliasFile } from "../nest/aliases.ts";
 import type { RenderOptions } from "../core/render/ansi.ts";
 
-// SPEC.md §5 step 4. Splits on the *last* dot, not the first — platform-socket.io is a real package name with a literal "." in it, and a SymbolRecord name never contains one.
+// Splits on the *last* dot, not the first — platform-socket.io is a real package name with a literal "." in it, and a SymbolRecord name never contains one.
 function splitPackageSymbol(query: string): { packageQuery: string; symbolName: string } | undefined {
   const dotIndex = query.lastIndexOf(".");
   if (dotIndex <= 0 || dotIndex === query.length - 1) return undefined;
   return { packageQuery: query.slice(0, dotIndex), symbolName: query.slice(dotIndex + 1) };
 }
 
-// ADR-0007's leading-"@" table: name-with-slash is a package, a capitalised word is a decorator, anything else is a usage error.
+// After a leading "@": a name with a slash is a package, a capitalised word is a decorator, anything else is a usage error.
 type AtClassification = { kind: "package" } | { kind: "decorator"; name: string } | { kind: "invalid" };
 
 function classifyAtQuery(query: string): AtClassification {
@@ -143,7 +143,7 @@ export function createProgram(dataDir: string): Command {
               }
               return;
             }
-            // Not installed — an @-prefixed package has no other meaning (ADR-0007), so this is a genuine miss, not a fallthrough.
+            // Not installed — an @-prefixed package has no other meaning, so this is a genuine miss, not a fallthrough.
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {

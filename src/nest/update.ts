@@ -26,14 +26,14 @@ function walkMarkdownFiles(dir: string): string[] {
   return out.sort();
 }
 
-// Same temp-file-then-rename discipline as core/cache/store.ts — not atomic across the pair of files, but each individually is never observed half-written.
+// Writes via temp-file-then-rename; not atomic across the pair of files, but each individually is never observed half-written.
 function writeAtomic(path: string, contents: string): void {
   const tempPath = `${path}.${process.pid}.tmp`;
   writeFileSync(tempPath, contents);
   renameSync(tempPath, path);
 }
 
-// SPEC.md §5: `nest-doc update` is the only networked command. Reuses the exact same fetch/transform pipeline the build scripts run at release time. `ts`/`marked` load through their lazy loaders — a static import here would still eagerly load both on every CLI invocation regardless of this module only being reached via `update` (verified ESM hoisting behaviour).
+// `nest-doc update` is the only networked command, reusing the same fetch/transform pipeline the build scripts run at release time; `ts`/`marked` load through their lazy loaders so other commands never pay to load them.
 export async function runUpdate(dataDir: string): Promise<UpdateResult> {
   const [ts, marked] = await Promise.all([loadTypeScript(), loadMarked()]);
   const tmpDir = mkdtempSync(join(tmpdir(), "getnestdoc-update-"));

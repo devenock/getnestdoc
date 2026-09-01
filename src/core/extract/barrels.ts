@@ -9,17 +9,7 @@ import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
 import type TS from "typescript";
 
-// Specifiers are written with .js (ESM); rewrite to .d.ts, falling back to <spec>/index.d.ts for directory specifiers (ARCHITECTURE.md §5.1).
-//
-// A specifier is text inside a *third-party* .d.ts file — untrusted,
-// attacker-controlled data, same trust boundary as core/cache/paths.ts's
-// packageVersion. Verified as a real issue: `export * from
-// "../../secret-location/leaked.js"` in a package's own index.d.ts made
-// extractPackage() read and display symbols from a .d.ts file completely
-// outside that package's own directory — a real barrel legitimately never
-// needs to leave its own package root. `packageRoot` constrains it there;
-// undefined means "don't follow this one", the same shape as an unresolvable
-// specifier already had.
+// Resolves a barrel's export specifier (written with .js for ESM) to a real .d.ts path, refusing anything outside packageRoot.
 function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot: string): string | undefined {
   const withoutExt = specifier.replace(/\.js$/, "");
   const direct = join(fromDir, `${withoutExt}.d.ts`);
@@ -49,13 +39,11 @@ function buildSymbolRecord(
     see: see.map((link) => ({ text: sanitizeExtractedText(link.text), url: sanitizeExtractedText(link.url) })),
     isPublicApi,
     file: relative(packageRoot, filePath),
-    line: line + 1, // SPEC.md §3: 1-based
+    line: line + 1, // 1-based
   };
 }
 
-// Walks the barrel graph from a package's entry .d.ts (ARCHITECTURE.md §5.1).
-// `allowedNames` propagates unchanged through every wildcard (`export *`) edge and only narrows on a named edge (`export { A, B }`) — resetting to "all" on each wildcard instead would silently over-include names a deeper file exports but the package never promoted to its public surface (verified: this exact trap on the real corpus, see CLAUDE.md).
-// Async, and the only place `typescript` actually loads (ADR-0001: guide lookups never pay for it).
+// Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads.
 export async function extractPackage(entryFile: string): Promise<SymbolRecord[]> {
   const ts = await loadTypeScript();
   const packageRoot = dirname(entryFile);

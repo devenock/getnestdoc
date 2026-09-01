@@ -12,12 +12,12 @@ function flattenScopedName(name: string): string {
   return name.startsWith("@") ? name.slice(1).replace("/", "__") : name;
 }
 
-// SPEC.md §5 exit code 3: "package found but unusable — ships no types."
+// Message shown when a package is found but ships no type declarations.
 export function describeUnusablePackage(name: string): string {
   return `"${name}" is installed but ships no type declarations. Try \`npm i -D @types/${flattenScopedName(name)}\`.`;
 }
 
-// ARCHITECTURE.md §4.3, four cases in order — verified against real fixtures, not the spec text alone: @nestjs/common@11/10 have neither an exports map nor a main field, so Node's implicit "./index.js" default has to run before the .js -> .d.ts sibling inference applies.
+// Resolves a package's .d.ts entry point by trying four cases in order: explicit types field, exports-map types condition, exports/main sibling inference, then a @types/* fallback.
 export function resolveEntryTypes(found: FoundPackage): EntryResolution {
   const { manifest, packageDir } = found;
 
@@ -49,8 +49,7 @@ export function resolveEntryTypes(found: FoundPackage): EntryResolution {
       }
     }
   } else {
-    // No exports map at all (content/@nestjs/common-11, -10): fall back to
-    // "main", defaulting to Node's own implicit "./index.js".
+    // No exports map at all: fall back to "main", defaulting to Node's own implicit "./index.js".
     const mainField = manifest.main ?? "./index.js";
     const candidate = siblingDts(packageDir, mainField);
     if (candidate) return { found: true, entryFile: candidate, resolutionCase: 3 };

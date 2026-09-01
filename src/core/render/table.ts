@@ -1,10 +1,10 @@
-// Column-aligned table rendering (ARCHITECTURE.md §7) — plain columns with a dashed rule, not a box-drawing border.
+// Renders a table as plain, column-aligned text with a dashed rule under the header, not a box-drawing border.
 import { bold, cyan, visibleLength, wrapText, type RenderOptions } from "./ansi.ts";
 import type { TableToken } from "./types.ts";
 
 const COLUMN_GAP = 2;
 
-// Cells carry code spans as backtick-wrapped text (guides-transform.ts's stripCellTags) — style cyan, same as codespan elsewhere.
+// Cells carry code spans as backtick-wrapped text — style cyan, same as codespan elsewhere.
 function styleCellText(text: string, options: RenderOptions): string {
   return text.replace(/`([^`]+)`/g, (_match, inner: string) => cyan(inner, options));
 }

@@ -17,7 +17,7 @@ export type ResolvePackageSymbolsResult =
   | { status: "not-installed"; packageName: string }
   | { status: "unusable"; message: string };
 
-// Ties resolve + cache + extract together (ARCHITECTURE.md §2). A cache hit never reaches extractPackage(), so a warm lookup pays none of the ~200ms typescript load cost.
+// Ties resolve, cache, and extract together; a cache hit never reaches extractPackage(), so a warm lookup pays none of the typescript load cost.
 export async function resolvePackageSymbols(rawName: string, startDir: string): Promise<ResolvePackageSymbolsResult> {
   const packageName = expandPackageShorthand(rawName);
   const found = findPackageDir(packageName, startDir);

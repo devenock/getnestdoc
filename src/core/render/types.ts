@@ -1,6 +1,6 @@
 import type { MarkedToken } from "marked";
 
-// The generic token contract SPEC.md §1 defines. Guide/GuidesFile (slug, title, etc.) are Nest-specific and live in nest/guides/ instead — core/ must not import from nest/ (ARCHITECTURE.md §3).
+// The generic rendering token contract; Nest-specific wrappers like Guide/GuidesFile live on the nest/ side instead.
 // Type-only import, erased at bundle time — doesn't pull marked into the runtime bundle.
 export type Heading = {
   depth: number;

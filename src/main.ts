@@ -7,7 +7,7 @@ import { createProgram } from "./cli/doc.command.ts";
 // Both dist/nest-doc.mjs (bundled) and src/main.ts (dev) sit one directory below the package root.
 const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "data");
 
-// Commander's default usage-error exit is 1, indistinguishable from "not found" (SPEC.md §5) — reclassified to 2 below.
+// Reclassified to exit code 2 below — commander's default usage-error exit is 1, indistinguishable from "not found".
 const USAGE_ERROR_CODES = new Set([
   "commander.missingArgument",
   "commander.optionMissingArgument",

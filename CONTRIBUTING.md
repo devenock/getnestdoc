@@ -60,7 +60,7 @@ Exact-count assertions (`extracts exactly 206 exports from @nestjs/common@12.0.1
 
 ## Style
 
-Comments are one-liners carrying the non-obvious "why" — a verified finding, a spec citation, a trap the next person would otherwise fall into. Not what the code already says. If you're restating the code, delete the comment instead.
+Comments are one-liners describing what the code does, kept for the cases where that isn't obvious from the code itself. Not what the code already says — if you're restating the code, delete the comment instead. Don't cite ADRs, other docs, or other source files by name; keep each comment self-contained.
 
 When you make a genuinely non-obvious engineering call, write an ADR for it in `docs/DECISIONS.md` rather than only explaining it in the PR description — PR descriptions aren't discoverable six months later when someone's trying to understand why the code does what it does.
 

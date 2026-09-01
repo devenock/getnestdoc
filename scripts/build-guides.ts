@@ -1,4 +1,4 @@
-// Produces data/guides.json. Build-time only (ARCHITECTURE.md §6.1) — never at install time or runtime.
+// Produces data/guides.json. Build-time only — never at install time or runtime.
 import { marked } from "marked";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

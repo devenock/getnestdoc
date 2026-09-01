@@ -2,7 +2,7 @@ import type { marked as MarkedSingleton, MarkedToken, Token, Tokens } from "mark
 import type { CodeToken, GuideToken, Heading, ImageToken, TableToken } from "../../core/render/types.ts";
 import type { Guide } from "../guides/types.ts";
 
-// Always a complete, self-closing tag, never inside a code fence — a global string strip is safe (ARCHITECTURE.md §6.3).
+// Removes <app-banner-*> tags, always complete and self-closing, so a global string strip is safe.
 function stripAppBanners(markdown: string): string {
   return markdown.replace(/<app-banner-[\w-]*>\s*<\/app-banner-[\w-]*>/g, "");
 }
@@ -20,7 +20,7 @@ function normalizeSource(markdown: string): string {
   return decodeBraceEscapes(stripAppBanners(markdown));
 }
 
-// <table>/<figure> blocks are pulled from the raw text before lexing, not walked from marked's token tree — marked's HTML-block tokenizer both splits a single table across a blank line and merges adjacent tables with none, and a placeholder swap sidesteps both.
+// <table>/<figure> blocks are extracted from raw text before lexing and swapped in via placeholders, sidestepping marked's own HTML-block tokenizer quirks.
 type ExtractedBlock = { kind: "table"; token: TableToken } | { kind: "image"; token: ImageToken };
 
 function stripCellTags(html: string): string {
@@ -223,7 +223,7 @@ function transformCodeToken(token: Tokens.Code, context: string): CodeToken {
   };
 }
 
-// GFM pipe-tables aren't in ARCHITECTURE.md §6.1's count (HTML <table>s only) but 45 more real tables use this form; both are normalised to the same TableToken shape.
+// Normalizes a GFM pipe-table to the same TableToken shape as an HTML <table>.
 function convertNativeTable(token: Tokens.Table): TableToken {
   return {
     type: "table",
@@ -247,7 +247,7 @@ function stripRaw(value: unknown): unknown {
   return value;
 }
 
-// `marked` is a parameter, not a static import — this module ships in the runtime `nest-doc update` bundle, and a static import would defeat the lazy-loading typescript-loader.ts establishes.
+// `marked` is a parameter rather than a static import, so this module stays lazily loaded in the runtime bundle.
 export function transformMarkdown(marked: typeof MarkedSingleton, rawMarkdown: string, file: string): Pick<Guide, "title" | "headings" | "tokens"> {
   const normalized = normalizeSource(rawMarkdown);
   const { text, placeholders } = extractHtmlBlocks(normalized);

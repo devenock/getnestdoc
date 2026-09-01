@@ -1,4 +1,4 @@
-// Colour primitives and width handling — hand-written, not chalk (ADR-0003): a dozen SGR constants don't need a dependency.
+// Hand-written colour primitives and width handling — a dozen SGR constants don't need a dependency.
 
 export type RenderOptions = {
   width: number;
@@ -53,7 +53,7 @@ export function magenta(text: string, options: RenderOptions): string {
   return sgr([35], text, options);
 }
 
-// Headings colour by depth (ARCHITECTURE.md §7); depth 1 is bold-only (SPEC.md §4.3, a guide's title), depth 2+ cycle through a small palette.
+// Depth 1 (a guide's title) is bold-only; depth 2+ cycle through a small colour palette.
 const HEADING_COLOR_CODES = [36, 33, 32, 35] as const; // cyan, yellow, green, magenta
 
 export function headingColor(depth: number, text: string, options: RenderOptions): string {

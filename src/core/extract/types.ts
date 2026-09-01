@@ -1,4 +1,4 @@
-// Mirrors SPEC.md §3's SymbolRecord exactly; the CacheFile wrapper around it lives in core/cache/store.ts.
+// The shape of one extracted symbol's kind — a function, class, interface, and so on.
 export type SymbolKind = "function" | "class" | "interface" | "type" | "enum" | "const" | "variable";
 
 export type JsDocTag = {

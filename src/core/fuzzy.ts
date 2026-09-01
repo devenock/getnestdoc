@@ -1,4 +1,4 @@
-// Hand-written Levenshtein for "did you mean?" suggestions (SPEC.md §4.4) — generic over any candidate string list, so it lives in core/.
+// Hand-written Levenshtein distance for "did you mean?" suggestions over any candidate string list.
 
 function levenshtein(a: string, b: string): number {
   const m = a.length;

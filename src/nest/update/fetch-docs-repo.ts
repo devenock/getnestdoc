@@ -1,4 +1,4 @@
-// Shared by build-guides.ts and build-aliases.ts — both derive from the same docs.nestjs.com tarball (ARCHITECTURE.md §6.1).
+// Fetches and extracts the docs.nestjs.com source tarball, shared by the build scripts and the runtime update command.
 import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";

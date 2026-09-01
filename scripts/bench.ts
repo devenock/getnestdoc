@@ -1,4 +1,4 @@
-// Benchmark harness (TESTING.md § Benchmark harness). Usage: node scripts/bench.ts [--budget=150] [query]
+// Latency benchmark harness. Usage: node scripts/bench.ts [--budget=150] [query]
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";

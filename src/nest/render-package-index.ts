@@ -14,7 +14,7 @@ function bucketFor(symbol: SymbolRecord): Bucket {
   return symbol.kind;
 }
 
-// Fixed display order, spec-mandated only for decorators-before-interfaces (SPEC.md §4.2's example) — decorators/classes/interfaces are Nest's primary surface.
+// Fixed display order — decorators, classes, and interfaces are Nest's primary surface, so they lead.
 const BUCKET_ORDER: Bucket[] = ["decorator", "class", "interface", "function", "type", "enum", "const", "variable"];
 
 const BUCKET_LABELS: Record<Bucket, string> = {
@@ -28,7 +28,7 @@ const BUCKET_LABELS: Record<Bucket, string> = {
   variable: "VARIABLES",
 };
 
-// "First sentence of the doc" (SPEC.md §4.2); falls back to the whole doc when there's no terminal period.
+// Extracts the first sentence of a doc string, falling back to the whole thing when there's no terminal period.
 function firstSentence(doc: string): string {
   const plain = plainText(doc);
   const match = /^(.*?[.!?])(\s|$)/.exec(plain);
@@ -40,7 +40,7 @@ function truncate(text: string, width: number): string {
   return `${text.slice(0, Math.max(0, width - 1))}…`;
 }
 
-// SPEC.md §4.2. ADR-0007: a package with zero `@publicApi` tags (verified: @nestjs/swagger) isn't a package with zero public symbols, so `all` is forced on rather than showing an empty index.
+// A package with zero `@publicApi` tags isn't a package with zero public symbols, so `all` is forced on rather than showing an empty index.
 export function renderPackageIndex(packageName: string, packageVersion: string, symbols: SymbolRecord[], all: boolean, options: RenderOptions): string {
   const publicCount = symbols.filter((s) => s.isPublicApi).length;
   const effectiveAll = all || publicCount === 0;

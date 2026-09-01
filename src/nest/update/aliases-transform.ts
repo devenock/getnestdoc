@@ -2,9 +2,9 @@ import type TS from "typescript";
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 
-// `ts` is a parameter, not a static import — this module ships in the runtime `nest-doc update` bundle (see core/extract/typescript-loader.ts for why).
+// `ts` is a parameter rather than a static import, since this module ships in the runtime `nest-doc update` bundle.
 
-// `slug` is undefined for a route with no component of its own (redirect or loadChildren container); `loadChildrenSpec` is left for the caller to resolve (this module does no filesystem I/O).
+// `slug` is undefined for a route with no component of its own (redirect or loadChildren container); `loadChildrenSpec` is left for the caller to resolve.
 type ParsedRoute = {
   path: string;
   slug?: string;
@@ -32,7 +32,7 @@ function findLoadChildrenImportSpec(ts: typeof TS, initializer: TS.Expression): 
   return spec;
 }
 
-// A component's own import path is the reliable slug source (ARCHITECTURE.md §6.2) — pure path arithmetic, no filesystem access.
+// Derives a component's slug from its own import path via pure path arithmetic, no filesystem access.
 function resolveComponentSlug(fileDir: string, importSpec: string, pagesRoot: string): string {
   const componentDir = dirname(resolve(fileDir, importSpec));
   return relative(pagesRoot, componentDir).split(sep).join("/");

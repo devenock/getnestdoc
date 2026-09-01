@@ -13,7 +13,7 @@ const CONCEPT_ALIASES: Record<string, string> = {
   module: "modules",
 };
 
-// Resolution steps 1-2 of SPEC.md §5: exact slug, then the alias table (ARCHITECTURE.md §6.2). Case-folded as a fallback only — guide slugs are already all-lowercase, so this never shadows a real entry, and symbol resolution elsewhere stays case-sensitive.
+// Resolves a guide by exact slug, then the alias table, then a case-folded retry as a last resort.
 export function findGuide(query: string, guidesFile: GuidesFile, aliasFile: AliasFile): Guide | undefined {
   const exact = guidesFile.guides[query];
   if (exact) return exact;
@@ -29,7 +29,7 @@ export function findGuide(query: string, guidesFile: GuidesFile, aliasFile: Alia
 
 const DOCS_ORIGIN = "https://docs.nestjs.com/";
 
-// The "See also" block: resolves a SymbolRecord.see[].url into a runnable command by reusing findGuide unchanged — returns the *path*, not the resolved slug, matching SPEC.md §4.1's worked example (both are runnable, since findGuide resolves either).
+// Resolves a SymbolRecord.see[].url into a runnable nest-doc path, for the "See also" block.
 export function resolveSeeUrl(url: string, guidesFile: GuidesFile, aliasFile: AliasFile): string | undefined {
   if (!url.startsWith(DOCS_ORIGIN)) return undefined;
 

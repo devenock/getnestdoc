@@ -23,7 +23,7 @@ function isInternalLinkToken(token: GuideToken): token is InternalLinkToken {
   return token.type === "internalLink";
 }
 
-// marked's Token[] includes an unused Tokens.Generic escape hatch (no custom tokenizers registered, so real data never has one) — cast to the clean GuideToken union, same as guides-transform.ts's lexer boundary.
+// marked's Token[] includes an unused Tokens.Generic escape hatch (no custom tokenizers registered, so real data never has one) — cast to the clean GuideToken union.
 function asGuideTokens(tokens: unknown): GuideToken[] {
   return (tokens ?? []) as GuideToken[];
 }
@@ -77,7 +77,7 @@ function renderInlineToken(token: GuideToken, options: MarkdownRenderOptions): s
   }
 }
 
-// Raw HTML pass-through (whatever guides-transform.ts left as-is, not a <table>/<figure>) — strip tags, keep rough line structure, render dim. Lossy, but safe for decorative leftover markup.
+// Raw leftover HTML pass-through — strips tags, keeps rough line structure, renders dim. Lossy, but safe for decorative markup.
 function stripHtmlToLines(html: string): string[] {
   const withBreaks = html.replace(/<\/(div|p|li|h[1-6]|tr|blockquote)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n");
   const text = withBreaks.replace(/<[^>]+>/g, "");
@@ -166,7 +166,7 @@ function renderBlock(token: GuideToken, options: MarkdownRenderOptions): string 
     case "list":
       return renderList(token, options, 0);
     case "table":
-      // guides-transform.ts already normalises every table token to TableToken; marked's native Tokens.Table never reaches here.
+      // Every table token is already normalised to TableToken upstream; marked's native Tokens.Table never reaches here.
       return renderTable(token as TableToken, options).join("\n");
     case "blockquote":
       return renderBlockquote(token, options);

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Mirrors SPEC.md §2 — defined here, not scripts/lib/, since this is the runtime consumer.
+// The shape of the built alias table: docs.nestjs.com URLs mapped to guide slugs.
 export type AliasFile = {
   version: 1;
   generatedAt: string;

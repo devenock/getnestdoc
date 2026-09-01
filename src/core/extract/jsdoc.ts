@@ -45,7 +45,7 @@ export type JsDocResult = {
 
 const EMPTY_RESULT: JsDocResult = { doc: "", tags: [], see: [], isPublicApi: false };
 
-// ARCHITECTURE.md §5.2. `.jsDoc` isn't part of the public compiler API (hence the cast) but is populated at parse time and stable across the TS versions this project has used.
+// `.jsDoc` isn't part of the public compiler API (hence the cast) but is populated at parse time and stable across the TS versions this project has used.
 export function extractJsDoc(ts: typeof TS, node: TS.Node): JsDocResult {
   const jsDocNodes = (node as { jsDoc?: TS.JSDoc[] }).jsDoc;
   if (!jsDocNodes || jsDocNodes.length === 0) return EMPTY_RESULT;

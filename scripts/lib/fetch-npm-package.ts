@@ -1,4 +1,4 @@
-// Shared by build-names.ts: downloads a real published tarball and lays it out as a real node_modules/<name> directory, so production find-package.ts/entry-types.ts run against it unmodified.
+// Downloads a real published tarball and lays it out as a real node_modules/<name> directory, so production resolution code runs against it unmodified.
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";

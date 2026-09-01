@@ -8,14 +8,14 @@ import { plainText } from "./doc-text.ts";
 
 const NO_DOC_LINE = "No documentation available in this package.";
 
-// @param tag text is "<name> <description>" (jsdoc.ts's join) — split back apart to column-align per SPEC.md §4.1's worked example.
+// Splits a joined "<name> <description>" @param tag back apart to column-align them.
 function splitParamTag(text: string): { name: string; description: string } {
   const spaceIndex = text.indexOf(" ");
   if (spaceIndex === -1) return { name: text, description: "" };
   return { name: text.slice(0, spaceIndex), description: text.slice(spaceIndex + 1) };
 }
 
-// Real @param descriptions carry embedded newlines from the source .d.ts's own wrapping (verified: Controller's options param) — wrapText's \s+ split re-flows them to the terminal width instead.
+// Real @param descriptions can carry embedded newlines from the source .d.ts's own wrapping; wrapText re-flows them to the terminal width instead.
 function renderParameters(tags: { name: string; text: string }[], width: number): string[] {
   const params = tags.filter((t) => t.name === "param").map((t) => splitParamTag(t.text));
   if (params.length === 0) return [];
@@ -33,7 +33,7 @@ function renderParameters(tags: { name: string; text: string }[], width: number)
   return lines;
 }
 
-// SPEC.md §4.1. Only resolvable entries are shown — an external link (verified: 3/118 real @see URLs, e.g. ValidationError's GitHub link) has no `nest-doc` equivalent and is silently dropped.
+// Only entries that resolve to a local guide are shown — an external link has no `nest-doc` equivalent and is silently dropped.
 function renderSeeAlso(see: { url: string }[], guidesFile: GuidesFile, aliasFile: AliasFile): string[] {
   const paths = see.map((link) => resolveSeeUrl(link.url, guidesFile, aliasFile)).filter((p): p is string => p !== undefined);
   if (paths.length === 0) return [];
@@ -43,7 +43,7 @@ function renderSeeAlso(see: { url: string }[], guidesFile: GuidesFile, aliasFile
   return lines;
 }
 
-// SPEC.md §4.1. ADR-0007: a package can ship zero JSDoc (@nestjs/swagger does, all 160 exports) — an explicit fallback line, never a blank section.
+// Renders one symbol's signature, doc, parameters, and see-also links; a package can ship zero JSDoc, so the doc section always shows an explicit fallback line rather than going blank.
 export function renderSymbol(
   packageName: string,
   packageVersion: string,
@@ -55,7 +55,7 @@ export function renderSymbol(
   const lines: string[] = [`${packageName}@${packageVersion}`, ""];
 
   const displaySignature = symbol.signature.replace(/^export\s+/, "").replace(/^declare\s+/, "").replace(/;$/, "");
-  // "Unindented" (SPEC.md §4.1) sets the left margin, not a promise it fits on one line — a large enum or interface member list routinely doesn't.
+  // Unindented sets the left margin, not a promise it fits on one line — a large enum or interface member list routinely doesn't.
   lines.push(...wrapText(displaySignature, Math.max(1, options.width)), "");
 
   if (symbol.doc) {

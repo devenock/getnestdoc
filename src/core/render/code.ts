@@ -1,4 +1,4 @@
-// Minimal TS/JS syntax highlighting via regex, not a parser (ADR-0003) — applied to every fence regardless of declared language; approximate for non-JS fences but harmless.
+// Minimal TS/JS syntax highlighting via regex, applied to every fence regardless of declared language; approximate for non-JS fences but harmless.
 import { cyan, dim, green, magenta, hardWrapVisible, type RenderOptions } from "./ansi.ts";
 
 const KEYWORDS = [

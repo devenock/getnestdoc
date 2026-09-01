@@ -1,4 +1,4 @@
-// Produces data/names.json (SPEC.md §2b, ADR-0007), build-time only, scoped to the 9 nestjs/nest monorepo packages plus @nestjs/swagger — names outside this index fall back to scanning the user's installed @nestjs/*, a documented degradation, not a silent gap.
+// Produces data/names.json, build-time only, scoped to the 9 nestjs/nest monorepo packages plus @nestjs/swagger; names outside this index fall back to scanning the user's installed @nestjs/*.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

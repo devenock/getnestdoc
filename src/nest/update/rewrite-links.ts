@@ -26,7 +26,7 @@ function resolveInternalHref(
   return anchor ? { slug, anchor } : { slug };
 }
 
-// Recursively walks a guide's token tree, replacing any link token whose href resolves internally with an InternalLinkToken (mirrors guides-transform.ts's stripRaw).
+// Recursively walks a guide's token tree, replacing any link token whose href resolves internally with an InternalLinkToken.
 export function rewriteInternalLinks(value: unknown, urlToSlug: Record<string, string>, guideSlugs: Set<string>): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => rewriteInternalLinks(item, urlToSlug, guideSlugs));

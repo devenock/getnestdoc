@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import type TS from "typescript";
 import type { SymbolKind } from "./types.ts";
 
-// setParentNodes: true is required for node.getText()/getStart() to work (ARCHITECTURE.md §5.1).
+// setParentNodes: true is required for node.getText()/getStart() to work.
 export function parseSourceFile(ts: typeof TS, filePath: string): TS.SourceFile {
   const text = readFileSync(filePath, "utf8");
   return ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true);
@@ -18,7 +18,7 @@ function isExported(ts: typeof TS, node: TS.Node): boolean {
   return (ts.getCombinedModifierFlags(node as TS.Declaration) & ts.ModifierFlags.Export) !== 0;
 }
 
-// Named, exported top-level declarations in one file — the raw material barrels.ts filters down to what a barrel actually re-exports.
+// Collects named, exported top-level declarations in one file — the raw material a barrel walk filters down to what it actually re-exports.
 export function getExportedDeclarations(ts: typeof TS, sourceFile: TS.SourceFile): Map<string, DeclarationEntry> {
   const declarations = new Map<string, DeclarationEntry>();
 
@@ -52,7 +52,7 @@ export function getExportedDeclarations(ts: typeof TS, sourceFile: TS.SourceFile
   return declarations;
 }
 
-// The module graph edges barrels.ts follows (ARCHITECTURE.md §5.1): wildcard and named re-exports. Excludes bare `export {};`, which has no module specifier.
+// A wildcard or named re-export the barrel walker follows; excludes bare `export {};`, which has no module specifier.
 export type ExportStatement =
   | { kind: "wildcard"; specifier: string }
   | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };

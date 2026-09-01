@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { FoundPackage, PackageManifest } from "./types.ts";
 
-// Walks up from `startDir` for `node_modules/<name>` (ARCHITECTURE.md §4.2), stopping at the filesystem root or a `.git` boundary — never touches the network.
+// Walks up from `startDir` looking for `node_modules/<name>`, stopping at the filesystem root or a `.git` boundary.
 export function findPackageDir(name: string, startDir: string): FoundPackage | undefined {
   const nameParts = name.split("/");
   let dir = startDir;
