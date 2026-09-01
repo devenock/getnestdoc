@@ -44,8 +44,8 @@
     "test": "node --test \"test/**/*.test.ts\"",
     "bench": "node scripts/bench.ts"
   },
-  "//typescript": "Pinned exact, no caret. 7.x is the native Go port and removes the JS Compiler API (createSourceFile, createProgram). See docs/DECISIONS.md, ADR-0001.",
-  "//marked": "Runtime dependency of `nest-doc update` only (src/nest/update/), lazy-loaded the same way typescript is — see marked-loader.ts. Left unpinned (caret) unlike typescript: marked's parser API is stable across its majors, this project doesn't touch its Compiler-API-equivalent internals.",
+  "//typescript": "Pinned exact, no caret — 7.x is the native Go port and removes the JS Compiler API (createSourceFile, createProgram).",
+  "//marked": "Runtime dependency of `nest-doc update` only, lazy-loaded the same way typescript is. Left unpinned unlike typescript: marked's parser API is stable across its majors.",
   "dependencies": {
     "commander": "^15.0.0",
     "marked": "^18.0.11",
@@ -59,7 +59,7 @@
     "eslint-plugin-import-x": "^4.17.1",
     "typescript-eslint": "^8.68.0"
   },
-  "//overrides": "eslint-plugin-import-x's unrs-resolver pulls in @napi-rs/wasm-runtime, which declares a *range* for @emnapi/core and @emnapi/runtime rather than an exact version. That range resolves to whatever's newest on the registry at install time, so package-lock.json generated on one day (or one platform) can miss a version the registry publishes later or resolves differently on Linux CI — the exact 'Missing: @emnapi/core@X from lock file' failure this pin exists to prevent. Pinning removes the ambiguity outright.",
+  "//overrides": "A transitive dependency declares a *range* for @emnapi/core and @emnapi/runtime rather than an exact version, letting the lock file drift depending on install timing. Pinning both removes the ambiguity.",
   "overrides": {
     "@emnapi/core": "1.10.0",
     "@emnapi/runtime": "1.10.0"
