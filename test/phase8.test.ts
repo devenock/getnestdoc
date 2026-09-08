@@ -48,22 +48,48 @@ test("nest-doc @foo exits 2 (lowercase word after @ has no defined meaning)", ()
   assert.match(result.stderr, /not a valid package.*or decorator/);
 });
 
-test("nest-doc @nestjs/throttler: a real, known package that isn't installed here gets an actionable message, not a generic miss", () => {
+test("nest-doc @nestjs/throttler: a real, known package that isn't installed here still renders real bundled docs, with a note", () => {
   const result = run(["@nestjs/throttler"], FIXTURES_ROOT);
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /"@nestjs\/throttler" isn't installed here\. Try `npm i @nestjs\/throttler`\./);
+  assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+  assert.match(result.stdout, /^@nestjs\/throttler@\d+\.\d+\.\d+$/m);
+  assert.match(result.stdout, /\bThrottle\b/, "expected a real export from the bundled data, not a stub");
+  assert.match(result.stdout, /bundled reference docs for @nestjs\/throttler@.*not installed in this project.*npm i @nestjs\/throttler/);
 });
 
-test("nest-doc throttler: the bare shorthand for an uninstalled package gets the same actionable message", () => {
+test("nest-doc throttler: the bare shorthand for an uninstalled package gets the same bundled fallback", () => {
   const result = run(["throttler"], FIXTURES_ROOT);
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /"@nestjs\/throttler" isn't installed here\. Try `npm i @nestjs\/throttler`\./);
+  assert.match(result.stdout, /^@nestjs\/throttler@\d+\.\d+\.\d+$/m);
+  assert.match(result.stdout, /bundled reference docs/);
 });
 
-test("nest-doc mapped-types: a newly-added shorthand entry resolves to the right package name", () => {
+test("nest-doc mapped-types: a newly-added shorthand entry resolves and renders bundled docs, not just a name match", () => {
   const result = run(["mapped-types"], FIXTURES_ROOT);
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /"@nestjs\/mapped-types" isn't installed here\. Try `npm i @nestjs\/mapped-types`\./);
+  assert.match(result.stdout, /^@nestjs\/mapped-types@\d+\.\d+\.\d+$/m);
+  assert.match(result.stdout, /\bPartialType\b/, "expected PartialType among the bundled exports");
+  assert.match(result.stdout, /bundled reference docs/);
+});
+
+test("nest-doc throttler.Throttle: package.symbol form also falls back to bundled data when not installed", () => {
+  const result = run(["throttler.Throttle"], FIXTURES_ROOT);
+  assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+  assert.match(result.stdout, /^@nestjs\/throttler@\d+\.\d+\.\d+$/m);
+  assert.match(result.stdout, /bundled reference docs/);
+});
+
+test("nest-doc Throttle: bare symbol name (no package prefix) also falls back to bundled data when not installed", () => {
+  const result = run(["Throttle"], FIXTURES_ROOT);
+  assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+  assert.match(result.stdout, /^@nestjs\/throttler@\d+\.\d+\.\d+$/m);
+  assert.match(result.stdout, /bundled reference docs/);
+});
+
+test("nest-doc @nestjs/cli: a real official package with no extractable types still gets the plain not-installed message, no bundled data exists for it", () => {
+  const result = run(["@nestjs/cli"], FIXTURES_ROOT);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /"@nestjs\/cli" isn't installed here\. Try `npm i @nestjs\/cli`\./);
+  assert.doesNotMatch(result.stdout, /bundled reference docs/);
 });
 
 test("nest-doc Xyzzy: an unrecognised bare word falls through to the generic suggestion, not a false 'not installed' claim", () => {

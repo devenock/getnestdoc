@@ -6,7 +6,7 @@ import { suggest } from "../core/fuzzy.ts";
 import { writeOutput } from "../core/pager.ts";
 import { loadAliases } from "../nest/aliases.ts";
 import { findGuide, loadGuides } from "../nest/guides/index.ts";
-import { resolvePackageSymbols } from "../nest/symbols.ts";
+import { resolvePackageSymbolsOrBundled } from "../nest/symbols.ts";
 import { loadNameIndex, resolveBareSymbol } from "../nest/names.ts";
 import { getCacheDir } from "../core/cache/paths.ts";
 import { clearCache } from "../core/cache/store.ts";
@@ -34,15 +34,20 @@ function classifyAtQuery(query: string): AtClassification {
   return { kind: "invalid" };
 }
 
-async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string): Promise<{ output: string } | { error: string; exitCode: number } | { notInstalled: true; packageName: string } | undefined> {
-  const resolved = await resolvePackageSymbols(packageQuery, cwd);
+async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string, dataDir: string): Promise<{ output: string } | { error: string; exitCode: number } | { notInstalled: true; packageName: string } | undefined> {
+  const resolved = await resolvePackageSymbolsOrBundled(packageQuery, cwd, dataDir);
   if (resolved.status === "not-installed") return { notInstalled: true, packageName: resolved.packageName };
   if (resolved.status === "unusable") return { error: resolved.message, exitCode: 3 };
-  return { output: renderPackageIndex(resolved.result.packageName, resolved.result.packageVersion, resolved.result.symbols, all, options) };
+  const output = renderPackageIndex(resolved.result.packageName, resolved.result.packageVersion, resolved.result.symbols, all, options);
+  return { output: resolved.result.bundled ? `${output}\n\n${bundledNote(resolved.result.packageName, resolved.result.packageVersion)}` : output };
 }
 
 function notInstalledMessage(packageName: string): string {
   return `"${packageName}" isn't installed here. Try \`npm i ${packageName}\`.`;
+}
+
+function bundledNote(packageName: string, packageVersion: string): string {
+  return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${packageName}\` to match your own version)`;
 }
 
 function renderAmbiguous(name: string, packageNames: string[]): string {
@@ -59,7 +64,8 @@ async function renderBareSymbolQuery(name: string, dataDir: string, cwd: string,
   if (resolved.status === "not-installed") {
     return { output: `"${resolved.name}" is exported by ${resolved.packageName}, which isn't installed here. Try \`npm i ${resolved.packageName}\`.`, exitCode: 0 };
   }
-  return { output: renderSymbol(resolved.packageName, resolved.packageVersion, resolved.symbol, guidesFile, aliasFile, options), exitCode: 0 };
+  const output = renderSymbol(resolved.packageName, resolved.packageVersion, resolved.symbol, guidesFile, aliasFile, options);
+  return { output: resolved.bundled ? `${output}\n\n${bundledNote(resolved.packageName, resolved.packageVersion)}` : output, exitCode: 0 };
 }
 
 export function createProgram(dataDir: string): Command {
@@ -105,7 +111,7 @@ export function createProgram(dataDir: string): Command {
         // package.symbol is tried first regardless of a leading "@" ("@nestjs/swagger.ApiProperty" and "common.Injectable" are the same shape); falls through, not a miss, on no match.
         const split = splitPackageSymbol(query);
         if (split) {
-          const resolved = await resolvePackageSymbols(split.packageQuery, cwd);
+          const resolved = await resolvePackageSymbolsOrBundled(split.packageQuery, cwd, dataDir);
 
           if (resolved.status === "unusable") {
             process.stderr.write(`${resolved.message}\n`);
@@ -116,7 +122,8 @@ export function createProgram(dataDir: string): Command {
           if (resolved.status === "found") {
             const symbol = resolved.result.symbols.find((s) => s.name === split.symbolName);
             if (symbol) {
-              await writeOutput(renderSymbol(resolved.result.packageName, resolved.result.packageVersion, symbol, guidesFile, aliasFile, renderOptions));
+              const symbolOutput = renderSymbol(resolved.result.packageName, resolved.result.packageVersion, symbol, guidesFile, aliasFile, renderOptions);
+              await writeOutput(resolved.result.bundled ? `${symbolOutput}\n\n${bundledNote(resolved.result.packageName, resolved.result.packageVersion)}` : symbolOutput);
               return;
             }
           }
@@ -137,7 +144,7 @@ export function createProgram(dataDir: string): Command {
           }
 
           if (classified.kind === "package") {
-            const result = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd);
+            const result = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir);
             if (result) {
               if ("notInstalled" in result) {
                 await writeOutput(notInstalledMessage(result.packageName));
@@ -158,7 +165,7 @@ export function createProgram(dataDir: string): Command {
             }
           }
         } else {
-          const indexResult = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd);
+          const indexResult = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir);
           // A recognised shorthand (e.g. "throttler" -> "@nestjs/throttler") that isn't installed gets the helpful
           // message below; an unrecognised bare word falls through to bare-symbol lookup and the suggestions below that.
           const isUnrecognisedShorthand = indexResult && "notInstalled" in indexResult && indexResult.packageName === query;

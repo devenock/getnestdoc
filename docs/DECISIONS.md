@@ -357,3 +357,35 @@ All three follow the same principle: this tool reads two kinds of input the CLI'
 - Every real fixture (`@nestjs/common`, `@nestjs/core`, `@nestjs/swagger`) extracts identical symbol counts before and after — sanitization touches only genuinely dangerous bytes, verified by the exact-count assertions already in place for this reason (TESTING.md's own non-negotiable).
 - Three dedicated regression tests, each built by reproducing the real exploit against the built binary first and only then turning it into a unit test — `test/cache.test.ts` (path traversal in both directions, write and delete) and `test/extract.test.ts` (barrel escape, escape-sequence stripping, including the stale-cache case).
 - Guide content is not run through the same escape-sequence stripping — it's vendored from one fixed, trusted repository at build time (ADR-0004), not arbitrary user-installed packages, a materially different trust level. Worth revisiting only if that trust model ever changes.
+
+## ADR-0010: Bundle reference docs for the official `@nestjs/*` scope
+
+**Status:** Accepted · **Date:** 2026-09-08
+
+### Context
+
+A real user query — `nest-doc @nestjs/throttler` — returned a generic "no match" because `@nestjs/throttler` wasn't installed in the project they ran it from. Symbol lookup has always read live from the caller's own `node_modules` by design (see the resolution model this tool was built on): no bundled index, so the version you see always matches the version you have installed. That design is correct and stays unchanged for arbitrary third-party packages.
+
+But `@nestjs/*` isn't an arbitrary third-party dependency — it's the framework itself. The comparison that clarified this: `go doc` shows Go's standard library instantly, offline, with nothing installed, because the stdlib ships as real source with the Go toolchain. Third-party Go packages don't get that treatment — they're fetched into the module cache on demand instead. The official NestJS ecosystem (`@nestjs/common`, `@nestjs/throttler`, `@nestjs/config`, and the rest of the ~35 packages already named in `package-scope.ts`'s shorthand table) is the bounded, curated set that plays the "standard library" role here. Arbitrary npm packages remain the "third-party" case and were never in scope for this.
+
+### Decision
+
+`scripts/build-packages.ts` fetches the latest published version of every official package, extracts full `SymbolRecord[]` data the same way the runtime does, and bundles the result as `data/packages.json`. `data/names.json` (bare-symbol-name → owning package) is now derived from the same extraction pass instead of a separate, narrower fetch, closing a real drift risk: the two lists had already gone out of sync once before this ADR.
+
+At lookup time, `resolvePackageSymbolsOrBundled` (`nest/symbols.ts`) tries the live `node_modules` walk first; only on a genuine miss does it fall back to `packages.json`. A live install always wins — the version-match guarantee holds whenever it can be honoured. Output rendered from bundled data carries an explicit note (`bundled reference docs for X@Y — not installed in this project; run npm i X to match your own version`), so it's never mistaken for the caller's actual installed version.
+
+Two packages in the official list — `@nestjs/cli` and `@nestjs/mau` — ship only a `bin` field, no `main`/`types`/`exports`. They're executables, not libraries; there's nothing to extract, and `build-packages.ts` skips them with a logged reason rather than failing.
+
+Building this surfaced a real, separate bug in the extraction engine itself: `@nestjs/bull`'s barrel re-exports from a sibling package (`@nestjs/bull-shared`) by bare specifier, not a relative path. `resolveModuleSpecifier` assumed every specifier was relative and crashed with `ENOENT` trying to read a nonexistent nested path. Fixed by checking the resolved candidate actually exists before returning it — a cross-package specifier now correctly falls through as "don't follow this edge" instead of crashing, which also means this bug was live for any real user with `@nestjs/bull` installed, not just the build script.
+
+### Rationale
+
+`go doc`'s two-tier model — bundled stdlib, on-demand-fetched third party — maps cleanly onto this tool's two-tier data model: bundled guides plus bundled official-package reference (both static, both build-time, both offline) versus live `node_modules` resolution for everything else (dynamic, always version-accurate). Extending "bundle it" to the *entire* npm ecosystem was considered and rejected — unbounded scope, and it would silently break the version-match guarantee for the common case (a project's own installed version) in exchange for covering packages this tool was never trying to cover.
+
+### Consequences
+
+- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
+- Loaded lazily — only inside the not-installed fallback branch, never on the hot path. Benchmarked directly: `nest-doc interceptors` (150 ms budget) still runs at ~52 ms median, and the bundled-fallback path itself (`nest-doc @nestjs/throttler`, nothing installed) runs at ~60 ms median, ~105 ms p95 — comfortably inside budget.
+- Bundled data is pinned to whatever was live on npm at the time `build-packages.ts` last ran — the same relationship Go has between your installed toolchain version and the stdlib docs it shows you. Refreshed on `getnestdoc` releases, not on every `nest-doc update` (which stays guide-only, per its own contract of being the only networked command run by users).
+- `scripts/build-names.ts` is deleted; `build:names` in `package.json` is now `build:packages`.
+- Six new integration tests in `test/phase8.test.ts` cover: bundled fallback for a scoped-package query, the bare shorthand form, a newly-added package (`mapped-types`), the `package.symbol` form, the bare-symbol-name form, and the case where no bundled data exists at all (`@nestjs/cli`) — confirming the plain not-installed message still shows correctly rather than silently claiming coverage that doesn't exist.

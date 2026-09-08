@@ -112,19 +112,25 @@ and file since this was written; not a routing-parser bug.
 
 ---
 
-## 2b. `data/names.json`
+## 2b. `data/names.json` and `data/packages.json`
 
-Prebuilt name index for bare symbol lookup (ADR-0007). Generated alongside the guide corpus.
+Both produced by `scripts/build-packages.ts` (ADR-0007, ADR-0010) in one extraction pass over the full official `@nestjs/*` scope — every name in `package-scope.ts`'s shorthand table except `cli` and `mau`, which ship no extractable types.
 
 ```ts
 type NameIndex = {
   version: 1;
   generatedAt: string;
-  names: Record<string, string[]>;   // "Get" → ["@nestjs/common"]
+  names: Record<string, string[]>;   // "Throttle" → ["@nestjs/throttler"]
+};
+
+type PackagesFile = {
+  version: 1;
+  generatedAt: string;
+  packages: Record<string, { packageVersion: string; symbols: SymbolRecord[] }>;
 };
 ```
 
-Covers the official `@nestjs` scope. Verified: zero colliding names across `@nestjs/common`, `core`, and `swagger`. Where a name maps to several packages, the CLI lists them and exits 1 rather than guessing.
+`names.json` maps a bare symbol name to its owning package(s); where a name maps to several, the CLI lists them and exits 1 rather than guessing. `packages.json` carries full `SymbolRecord[]` data per package — the reference fallback `resolvePackageSymbolsOrBundled` reaches for only when a live `node_modules` lookup misses. A live install always wins over bundled data; output from the bundled path carries an explicit note naming the bundled version.
 
 ---
 
@@ -263,7 +269,7 @@ nest-doc --help
 | `@` + one capitalised word | decorator — `@Get`, `@Injectable` |
 | `@` + one lowercase word | exit 2 with a suggestion |
 
-A scoped package (step 3) or a recognised shorthand (`common`, `throttler`, and the rest of the official `@nestjs/*` scope) that resolves to a real package name which just isn't installed prints `"<package>" isn't installed here. Try \`npm i <package>\`.` and exits 0 — this is a known, actionable outcome, not a miss. An unrecognised bare word still falls through to step 6.
+A scoped package (step 3) or a recognised shorthand (`common`, `throttler`, and the rest of the official `@nestjs/*` scope) that resolves to a real package name falls back to `data/packages.json` (ADR-0010) when not installed, rendering real bundled docs with a note naming the bundled version — not installed *and* not part of the official scope prints `"<package>" isn't installed here. Try \`npm i <package>\`.` and exits 0, a known, actionable outcome, not a miss. Either way this is never a hard error. An unrecognised bare word still falls through to step 6.
 
 Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the symbol.
 

@@ -5,11 +5,13 @@ import { readCache, writeCache } from "../core/cache/store.ts";
 import { describeUnusablePackage, resolveEntryTypes } from "../core/resolve/entry-types.ts";
 import { findPackageDir } from "../core/resolve/find-package.ts";
 import { expandPackageShorthand } from "./package-scope.ts";
+import { loadBundledPackages } from "./bundled-packages.ts";
 
 type PackageSymbols = {
   packageName: string;
   packageVersion: string;
   symbols: SymbolRecord[];
+  bundled?: true;
 };
 
 export type ResolvePackageSymbolsResult =
@@ -47,4 +49,21 @@ export async function resolvePackageSymbols(rawName: string, startDir: string): 
   });
 
   return { status: "found", result: { packageName, packageVersion, symbols } };
+}
+
+// Falls back to bundled reference data (data/packages.json, covering the official @nestjs/* scope) only when the
+// package genuinely isn't installed — a live install always wins, so the "matches what you have installed"
+// guarantee holds whenever it can. "unusable" (installed but ships no types) is a real local problem and is never
+// overridden by bundled data.
+export async function resolvePackageSymbolsOrBundled(rawName: string, startDir: string, dataDir: string): Promise<ResolvePackageSymbolsResult> {
+  const live = await resolvePackageSymbols(rawName, startDir);
+  if (live.status !== "not-installed") return live;
+
+  const bundled = loadBundledPackages(dataDir).packages[live.packageName];
+  if (!bundled) return live;
+
+  return {
+    status: "found",
+    result: { packageName: live.packageName, packageVersion: bundled.packageVersion, symbols: bundled.symbols, bundled: true },
+  };
 }

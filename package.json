@@ -40,7 +40,7 @@
     "build": "node scripts/bundle.ts",
     "build:guides": "node scripts/build-guides.ts",
     "build:aliases": "node scripts/build-aliases.ts",
-    "build:names": "node scripts/build-names.ts",
+    "build:packages": "node scripts/build-packages.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "bench": "node scripts/bench.ts"
   },
