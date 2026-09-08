@@ -34,11 +34,15 @@ function classifyAtQuery(query: string): AtClassification {
   return { kind: "invalid" };
 }
 
-async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string): Promise<{ output: string } | { error: string; exitCode: number } | undefined> {
+async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string): Promise<{ output: string } | { error: string; exitCode: number } | { notInstalled: true; packageName: string } | undefined> {
   const resolved = await resolvePackageSymbols(packageQuery, cwd);
-  if (resolved.status === "not-installed") return undefined;
+  if (resolved.status === "not-installed") return { notInstalled: true, packageName: resolved.packageName };
   if (resolved.status === "unusable") return { error: resolved.message, exitCode: 3 };
   return { output: renderPackageIndex(resolved.result.packageName, resolved.result.packageVersion, resolved.result.symbols, all, options) };
+}
+
+function notInstalledMessage(packageName: string): string {
+  return `"${packageName}" isn't installed here. Try \`npm i ${packageName}\`.`;
 }
 
 function renderAmbiguous(name: string, packageNames: string[]): string {
@@ -135,7 +139,9 @@ export function createProgram(dataDir: string): Command {
           if (classified.kind === "package") {
             const result = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd);
             if (result) {
-              if ("error" in result) {
+              if ("notInstalled" in result) {
+                await writeOutput(notInstalledMessage(result.packageName));
+              } else if ("error" in result) {
                 process.stderr.write(`${result.error}\n`);
                 process.exitCode = result.exitCode;
               } else {
@@ -143,7 +149,6 @@ export function createProgram(dataDir: string): Command {
               }
               return;
             }
-            // Not installed — an @-prefixed package has no other meaning, so this is a genuine miss, not a fallthrough.
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {
@@ -154,8 +159,13 @@ export function createProgram(dataDir: string): Command {
           }
         } else {
           const indexResult = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd);
-          if (indexResult) {
-            if ("error" in indexResult) {
+          // A recognised shorthand (e.g. "throttler" -> "@nestjs/throttler") that isn't installed gets the helpful
+          // message below; an unrecognised bare word falls through to bare-symbol lookup and the suggestions below that.
+          const isUnrecognisedShorthand = indexResult && "notInstalled" in indexResult && indexResult.packageName === query;
+          if (indexResult && !isUnrecognisedShorthand) {
+            if ("notInstalled" in indexResult) {
+              await writeOutput(notInstalledMessage(indexResult.packageName));
+            } else if ("error" in indexResult) {
               process.stderr.write(`${indexResult.error}\n`);
               process.exitCode = indexResult.exitCode;
             } else {

@@ -263,6 +263,8 @@ nest-doc --help
 | `@` + one capitalised word | decorator — `@Get`, `@Injectable` |
 | `@` + one lowercase word | exit 2 with a suggestion |
 
+A scoped package (step 3) or a recognised shorthand (`common`, `throttler`, and the rest of the official `@nestjs/*` scope) that resolves to a real package name which just isn't installed prints `"<package>" isn't installed here. Try \`npm i <package>\`.` and exits 0 — this is a known, actionable outcome, not a miss. An unrecognised bare word still falls through to step 6.
+
 Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the symbol.
 
 `--guide` restricts to 1–2, `--api` to 3–5. A query matching both prints both headings and asks the user to disambiguate; it never guesses.

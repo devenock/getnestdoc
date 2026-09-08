@@ -48,6 +48,31 @@ test("nest-doc @foo exits 2 (lowercase word after @ has no defined meaning)", ()
   assert.match(result.stderr, /not a valid package.*or decorator/);
 });
 
+test("nest-doc @nestjs/throttler: a real, known package that isn't installed here gets an actionable message, not a generic miss", () => {
+  const result = run(["@nestjs/throttler"], FIXTURES_ROOT);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /"@nestjs\/throttler" isn't installed here\. Try `npm i @nestjs\/throttler`\./);
+});
+
+test("nest-doc throttler: the bare shorthand for an uninstalled package gets the same actionable message", () => {
+  const result = run(["throttler"], FIXTURES_ROOT);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /"@nestjs\/throttler" isn't installed here\. Try `npm i @nestjs\/throttler`\./);
+});
+
+test("nest-doc mapped-types: a newly-added shorthand entry resolves to the right package name", () => {
+  const result = run(["mapped-types"], FIXTURES_ROOT);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /"@nestjs\/mapped-types" isn't installed here\. Try `npm i @nestjs\/mapped-types`\./);
+});
+
+test("nest-doc Xyzzy: an unrecognised bare word falls through to the generic suggestion, not a false 'not installed' claim", () => {
+  const result = run(["Xyzzy"], FIXTURES_ROOT);
+  assert.equal(result.status, 1);
+  assert.doesNotMatch(result.stdout, /isn't installed here/);
+  assert.match(result.stderr, /No guide or symbol matches "Xyzzy"/);
+});
+
 test("nest-doc Module resolves to the guide; nest-doc Module --api resolves to the symbol", () => {
   const guideResult = run(["Module"], FIXTURES_ROOT);
   assert.equal(guideResult.status, 0);
