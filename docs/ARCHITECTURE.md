@@ -134,7 +134,7 @@ One positional argument carries five possible meanings. Resolution order (SPEC.m
 7. miss                        → exit 1 with suggestions
 ```
 
-`--guide` short-circuits to steps 1–2; `--api` to 3–5. Guides win ties *silently* — a bare word that could be either resolves to the guide by default (`nest-doc Module` → the guide; `--api` forces the decorator), because steps 1–2 run before 3–5 and simply match first. This isn't the same thing as ADR-0007's "ambiguous" case, which is narrower and concrete: a bare name that resolves to *more than one installed package* in the name index (`data/names.json`) — that's the one case that prints every option and exits 1 rather than guessing, per SPEC.md §2b. Verified against the real shipped index (10 packages, 606 names): zero such collisions today: this path exists for correctness, not because it currently fires.
+`--guide` short-circuits to steps 1–2; `--api` to 3–5. Guides win ties *silently* — a bare word that could be either resolves to the guide by default (`nest-doc Module` → the guide; `--api` forces the decorator), because steps 1–2 run before 3–5 and simply match first. This isn't the same thing as ADR-0007's "ambiguous" case, which is narrower and concrete: a bare name that maps to *more than one package* in the name index (`data/names.json`) — that's the one case that prints every option and exits 1 rather than guessing, per SPEC.md §2b. Verified against the real shipped index (37 packages, 1226 names): 36 real collisions today (e.g. `PartialType`, exported by `@nestjs/graphql`, `@nestjs/mapped-types`, and `@nestjs/swagger` alike) — this path fires for real queries, not just in theory.
 
 Query classification also has to decide, ahead of all of this, whether a dotted query is a package.symbol pair (step 4) before falling through to steps 3/5 — checked first and independent of a leading `@`, since `@nestjs/swagger.ApiProperty` and `common.Injectable` are the same shape. The split point is the *last* `.`, not the first: `platform-socket.io` is a real published package name (and a real shorthand-table entry) with a literal `.` in it, so `@nestjs/platform-socket.io.SomeExport` must keep the whole thing before the last dot as the package.
 
@@ -144,7 +144,7 @@ The `common.X` shorthand expands `common` → `@nestjs/common` via a static tabl
 
 ### 4.2 Finding the package
 
-Walk up from `cwd` looking for `node_modules/<name>`. Stop at filesystem root or a `.git` boundary, whichever comes first. If nothing is found, the tool reports that the package is not installed and falls back to guide lookups only — it does not fetch from the registry, because that would break the offline guarantee.
+Walk up from `cwd` looking for `node_modules/<name>`. Stop at filesystem root or a `.git` boundary, whichever comes first; if that fails, try the global npm root (derived from `process.execPath`, no `npm root -g` subprocess — that would cost 100ms+ on a path that has to stay fast). If a package genuinely isn't installed anywhere and it's part of the official `@nestjs/*` scope, `resolvePackageSymbolsOrBundled` (ADR-0010) falls back to `data/packages.json` before giving up — still fully offline, no registry fetch, because that would break the offline guarantee. A live install always wins over bundled data when both exist.
 
 ### 4.3 Finding the entry declaration file
 

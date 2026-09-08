@@ -9,11 +9,16 @@ import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
 import type TS from "typescript";
 
-// Resolves a barrel's export specifier (written with .js for ESM) to a real .d.ts path, refusing anything outside packageRoot.
+// Resolves a barrel's export specifier (written with .js for ESM) to a real .d.ts path, refusing anything outside
+// packageRoot. A specifier can also be a bare cross-package import (e.g. "@scope/other-pkg", re-exporting a peer
+// dependency's own exports) rather than a relative path within this package — that's out of scope for a single
+// package's barrel walk, and correctly falls through the existsSync check below rather than resolving to a bogus,
+// nonexistent nested path that would crash the caller.
 function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot: string): string | undefined {
   const withoutExt = specifier.replace(/\.js$/, "");
   const direct = join(fromDir, `${withoutExt}.d.ts`);
   const resolved = existsSync(direct) ? direct : join(fromDir, withoutExt, "index.d.ts");
+  if (!existsSync(resolved)) return undefined;
 
   const resolvedRoot = resolve(packageRoot) + sep;
   return resolve(resolved).startsWith(resolvedRoot) ? resolved : undefined;

@@ -68,6 +68,12 @@ $ nest-doc @Get                 # same decorator, same answer
 $ nest-doc Get
 ```
 
+Haven't installed the package yet? Every official `@nestjs/*` package — not just the ones in your `node_modules` — still resolves, from bundled reference data, clearly labelled as such:
+
+```console
+$ nest-doc @nestjs/throttler    # real docs, even before `npm i @nestjs/throttler`
+```
+
 Long output pages automatically through `$PAGER` (or `less`) when you're at a real terminal — scroll and `/search` like any man page. Piped or redirected output skips paging entirely and stays plain text, so it composes:
 
 ```console
@@ -76,13 +82,15 @@ $ nest-doc --all @nestjs/common | grep -i pipe
 
 ## How it works
 
-Two sources behind one command.
+Three sources behind one command, all offline.
 
 **Guides** are vendored at build time from `nestjs/docs.nestjs.com` (MIT) — 143 markdown files, pre-tokenised and shipped inside the package. No network at lookup time.
 
-**Symbols** are read from the `.d.ts` files in the nearest `node_modules`, parsed directly rather than type-checked, and cached per package version. First lookup for a package takes a moment; every one after is instant.
+**Symbols** are read from the `.d.ts` files in the nearest `node_modules`, parsed directly rather than type-checked, and cached per package version. First lookup for a package takes a moment; every one after is instant. This always wins when it's available — you get the exact version you have installed, not a guess.
 
-The two link up. Nest's JSDoc `@see` tags point at docs.nestjs.com URLs, which resolve to the local guides — so a symbol lookup can hand you the relevant guide section without a browser.
+**The official `@nestjs/*` scope** — everything named in the shorthand table, from `common` to `throttler` to `mapped-types` — has reference docs bundled the same way guides are, so a package you haven't installed yet still resolves instead of a dead end. Output from this path is clearly labelled with the bundled version, so it's never mistaken for what you actually have installed.
+
+The two live sources link up. Nest's JSDoc `@see` tags point at docs.nestjs.com URLs, which resolve to the local guides — so a symbol lookup can hand you the relevant guide section without a browser.
 
 Full detail in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 

@@ -4,7 +4,7 @@ Working notes for AI assistance in this repo. Read `docs/ARCHITECTURE.md`, `docs
 
 ## What this is
 
-A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `nest-doc`. Two corpora: guides vendored from the Nest docs repo at build time, and API symbols parsed from the user's `node_modules` at runtime.
+A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `nest-doc`. Three corpora: guides vendored from the Nest docs repo at build time, API symbols parsed from the user's `node_modules` at runtime, and bundled reference symbol data for the official `@nestjs/*` scope (ADR-0010) that a live install always takes priority over.
 
 ## Constraints that are not negotiable
 
