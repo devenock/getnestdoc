@@ -15,9 +15,7 @@ function normaliseManifest(raw: Record<string, unknown>): PackageManifest {
     const value = stringField(raw, key);
     if (value !== undefined) manifest[key] = value;
   }
-  if (typeof raw.exports === "string" || (raw.exports !== null && typeof raw.exports === "object")) {
-    manifest.exports = raw.exports as NonNullable<PackageManifest["exports"]>;
-  }
+  if (raw.exports !== undefined && raw.exports !== null) manifest.exports = raw.exports;
   return manifest;
 }
 

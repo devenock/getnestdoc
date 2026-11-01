@@ -148,3 +148,78 @@ test("common.X shorthand expands to @nestjs/common via the static scope table", 
   assert.equal(expandPackageShorthand("swagger"), "@nestjs/swagger");
   assert.equal(expandPackageShorthand("lodash"), "lodash");
 });
+
+// Builds node_modules/<name> in a scratch dir from a package.json object plus extra files, and resolves it.
+function resolveScratch(manifest: Record<string, unknown>, files: Record<string, string>) {
+  const tmp = mkdtempSync(join(tmpdir(), "getnestdoc-resolve-shapes-"));
+  const pkgDir = join(tmp, "node_modules", "shape");
+  mkdirSync(pkgDir, { recursive: true });
+  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "shape", version: "1.0.0", ...manifest }));
+  for (const [path, contents] of Object.entries(files)) {
+    mkdirSync(join(pkgDir, path, ".."), { recursive: true });
+    writeFileSync(join(pkgDir, path), contents);
+  }
+  const found = findPackageDir("shape", tmp);
+  assert.ok(found, "scratch package not found");
+  return { tmp, pkgDir, result: resolveEntryTypes(found!) };
+}
+
+// Nested condition objects are the common modern shape (tsup/unbuild output); this used to throw
+// "jsPath.replace is not a function" because a condition's value was assumed to be a string.
+test("nested export conditions ({ import: { types, default } }) resolve to the nested types file", () => {
+  const { tmp, pkgDir, result } = resolveScratch(
+    {
+      exports: {
+        ".": {
+          import: { types: "./dist/index.d.mts", default: "./dist/index.mjs" },
+          require: { types: "./dist/index.d.ts", default: "./dist/index.js" },
+        },
+      },
+    },
+    { "dist/index.d.mts": "export {};", "dist/index.d.ts": "export {};" },
+  );
+  try {
+    assert.deepEqual(result, { found: true, entryFile: join(pkgDir, "dist/index.d.mts"), resolutionCase: 2 });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("nested conditions without a types key fall back to .mjs -> .d.mts sibling inference", () => {
+  const { tmp, pkgDir, result } = resolveScratch(
+    { exports: { ".": { import: { default: "./dist/index.mjs" } } } },
+    { "dist/index.d.mts": "export {};" },
+  );
+  try {
+    assert.deepEqual(result, { found: true, entryFile: join(pkgDir, "dist/index.d.mts"), resolutionCase: 3 });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("conditions sugar (an exports object with no \".\" key) is treated as the root export", () => {
+  const { tmp, pkgDir, result } = resolveScratch({ exports: { types: "./types.d.ts", default: "./index.js" } }, { "types.d.ts": "export {};" });
+  try {
+    assert.deepEqual(result, { found: true, entryFile: join(pkgDir, "types.d.ts"), resolutionCase: 2 });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("a fallback array in the exports map is tried in order", () => {
+  const { tmp, pkgDir, result } = resolveScratch({ exports: { ".": ["./missing.js", "./lib/main.cjs"] } }, { "lib/main.d.cts": "export {};" });
+  try {
+    assert.deepEqual(result, { found: true, entryFile: join(pkgDir, "lib/main.d.cts"), resolutionCase: 3 });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("a types field naming a directory is not an entry file (would crash readFileSync with EISDIR)", () => {
+  const { tmp, pkgDir, result } = resolveScratch({ types: "./typings", main: "./lib" }, { "typings/placeholder.txt": "", "lib/index.d.ts": "export {};" });
+  try {
+    assert.deepEqual(result, { found: true, entryFile: join(pkgDir, "lib/index.d.ts"), resolutionCase: 3 });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});

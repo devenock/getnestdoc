@@ -153,3 +153,15 @@ test("a raw escape sequence embedded in a JSDoc comment never reaches the extrac
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("an .mjs barrel specifier resolves to its .d.mts declaration file", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-mjs-barrel-test-"));
+  try {
+    writeFileSync(join(root, "index.d.mts"), `export * from "./thing.mjs";\n`);
+    writeFileSync(join(root, "thing.d.mts"), `export declare function fromMjs(): void;\n`);
+    const names = (await extractPackage(join(root, "index.d.mts"))).map((s) => s.name);
+    assert.deepEqual(names, ["fromMjs"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

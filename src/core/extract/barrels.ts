@@ -15,8 +15,10 @@ import type TS from "typescript";
 // package's barrel walk, and correctly falls through the existsSync check below rather than resolving to a bogus,
 // nonexistent nested path that would crash the caller.
 function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot: string): string | undefined {
-  const withoutExt = specifier.replace(/\.js$/, "");
-  const direct = join(fromDir, `${withoutExt}.d.ts`);
+  // .js -> .d.ts, .mjs -> .d.mts, .cjs -> .d.cts; an extensionless specifier gets .d.ts.
+  const ext = /\.([mc]?)js$/.exec(specifier);
+  const withoutExt = ext ? specifier.slice(0, -ext[0].length) : specifier;
+  const direct = join(fromDir, `${withoutExt}.d.${ext?.[1] ?? ""}ts`);
   const resolved = existsSync(direct) ? direct : join(fromDir, withoutExt, "index.d.ts");
   if (!existsSync(resolved)) return undefined;
 
