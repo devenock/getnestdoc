@@ -158,7 +158,7 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
       const subRequest = new Map<string, string[]>();
       for (const { sourceName, exportedName } of forward.names) {
         const finals = request === "all" ? [exportedName] : (request.get(exportedName) ?? []);
-        if (finals.length > 0) subRequest.set(sourceName, [sourceName]);
+        if (finals.length > 0) subRequest.set(sourceName, [...(subRequest.get(sourceName) ?? []), ...finals]);
       }
       if (subRequest.size > 0) visit(targetFile, subRequest);
     }

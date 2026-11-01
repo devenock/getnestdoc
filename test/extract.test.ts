@@ -252,3 +252,17 @@ test("re-export cycles terminate, and a name reachable twice is recorded once", 
     ["A", "B"],
   );
 });
+
+// `export { Foo as Bar }` recorded the symbol under its source name `Foo`, so `nest-doc pkg.Bar` was a miss and the
+// package index listed a name the package doesn't export.
+test("an aliased re-export is recorded under its exported name, through nested barrels", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export { Inner as Public } from "./mid.js";\nexport { Foo as Bar, Foo } from "./a.js";\n`,
+      "mid.d.ts": `export * from "./deep.js";\n`,
+      "deep.d.ts": `export declare class Inner {}\nexport declare class Hidden {}\n`,
+      "a.d.ts": `export declare function Foo(): void;\n`,
+    }),
+    ["Bar", "Foo", "Public"],
+  );
+});
