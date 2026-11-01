@@ -4,10 +4,7 @@ import type { SymbolRecord } from "../extract/types.ts";
 import { sanitizeSymbolRecord } from "../extract/sanitize.ts";
 import { getCacheFilePath } from "./paths.ts";
 
-// `version` is the cache format version, separate from packageVersion, which already sits in the filename. Bumped
-// whenever extraction output changes for the same package version — entries are keyed by package version, so without
-// a bump a tool upgrade would keep serving records produced by the old extractor. 2: overload merging, aliased and
-// local re-exports, package-relative `file` (ADR-0009, ADR-0011).
+// `version` is the cache format version, separate from packageVersion (already in the filename); bump it whenever extraction output changes for the same package version, or upgrades keep serving stale records.
 export type CacheFile = {
   version: typeof CACHE_FORMAT_VERSION;
   package: string;
@@ -34,8 +31,7 @@ function isStringPairList(value: unknown, a: string, b: string): boolean {
   return Array.isArray(value) && value.every((item) => item !== null && typeof item === "object" && typeof item[a] === "string" && typeof item[b] === "string");
 }
 
-// Valid JSON isn't a valid entry: a truncated-then-repaired or hand-edited file can parse fine and still be missing
-// `symbols`, which used to crash the lookup with exit 4. Every field a consumer reads is checked.
+// Checks every field a consumer reads — a parseable file can still be the wrong shape.
 function isSymbolRecord(value: unknown): value is SymbolRecord {
   if (value === null || typeof value !== "object") return false;
   const s = value as Record<string, unknown>;
@@ -61,8 +57,7 @@ function deleteQuietly(filePath: string): void {
   }
 }
 
-// Reads a cache entry. Unparseable or wrongly-shaped files are deleted and treated as a miss; a format-version
-// mismatch is a plain miss, overwritten by the next write.
+// Reads a cache entry; an unparseable or wrongly-shaped file is deleted and treated as a miss, a format-version mismatch is a plain miss.
 export function readCache(cacheDir: string, packageName: string, packageVersion: string): CacheFile | undefined {
   const filePath = getCacheFilePath(cacheDir, packageName, packageVersion);
   if (!filePath) {
@@ -97,8 +92,7 @@ export function readCache(cacheDir: string, packageName: string, packageVersion:
     return undefined;
   }
 
-  // Re-sanitized on every read, since an entry written by an older version of this tool (or tampered with on disk)
-  // may predate this cleanup.
+  // Re-sanitized on every read, since an entry written by an older version of this tool, or tampered with on disk, may predate this cleanup.
   return { ...entry, symbols: entry.symbols.map(sanitizeSymbolRecord) };
 }
 

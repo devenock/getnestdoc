@@ -1,10 +1,9 @@
 import type TS from "typescript";
 
-// The only release line this tool can run on (ADR-0001) — named in the errors below so they say what to install.
+// The only typescript release with the JS Compiler API this tool runs on, named in the errors below.
 const REQUIRED_TYPESCRIPT = "6.0.3";
 
-// typescript@7 is the native Go port: it installs and imports fine but exports only `version`/`versionMajorMinor`, so
-// without this check the first symbol lookup dies with "createSourceFile is not a function" (ADR-0001).
+// typescript@7 (the native Go port) imports fine but exports only `version`/`versionMajorMinor`; this turns that into a clear error instead of "createSourceFile is not a function".
 export function assertCompilerApi(ts: Partial<typeof TS>): asserts ts is typeof TS {
   if (typeof ts.createSourceFile !== "function") {
     throw new Error(
@@ -14,8 +13,7 @@ export function assertCompilerApi(ts: Partial<typeof TS>): asserts ts is typeof 
   }
 }
 
-// Dynamically imports typescript so guide-only lookups never pay to load it; the only place this module is imported.
-// Failures carry a message naming the fix rather than a bare module-resolution error; guide lookups never reach here.
+// Dynamically imports typescript so guide-only lookups never pay to load it; failures name the fix rather than surfacing a bare resolution error.
 export async function loadTypeScript(): Promise<typeof TS> {
   let mod: { default: Partial<typeof TS> };
   try {

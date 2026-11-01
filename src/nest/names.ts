@@ -32,8 +32,7 @@ function listInstalledNestPackages(startDir: string): string[] {
   while (true) {
     const scopeDir = join(dir, "node_modules", "@nestjs");
     if (existsSync(scopeDir)) {
-      // Symlinks count: pnpm, workspaces, and `npm link` install every package as one, and a Dirent for a symlink
-      // reports isDirectory() false even when it points at a package directory.
+      // Symlinks count — pnpm, workspaces, and `npm link` install packages as symlinks, which a Dirent reports as not a directory.
       return readdirSync(scopeDir, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
         .map((entry) => `@nestjs/${entry.name}`);
@@ -45,9 +44,7 @@ function listInstalledNestPackages(startDir: string): string[] {
   }
 }
 
-// Every bare-word miss reaches this scan, so a typo used to cold-extract every installed @nestjs/* package (~460 ms
-// for five, against a 150 ms budget). An install at exactly the bundled version is skipped: names.json was built
-// from that version, so it already says the name isn't there. Only versions the index wasn't built from can add names.
+// Skips installs at exactly the bundled version — the name index was built from it, so it already says the name isn't there — keeping a typo from cold-extracting every package.
 async function scanInstalledPackagesForName(name: string, startDir: string, dataDir: string): Promise<BareSymbolResolution> {
   const candidates = listInstalledNestPackages(startDir);
   const bundled = loadBundledPackages(dataDir).packages;

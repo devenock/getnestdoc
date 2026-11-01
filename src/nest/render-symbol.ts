@@ -44,8 +44,7 @@ function renderSeeAlso(see: { url: string }[], guidesFile: GuidesFile, aliasFile
   return lines;
 }
 
-// The doc body, indented four (SPEC.md §4.1): paragraphs wrapped, lists bulleted with a hanging indent, code
-// examples highlighted like guide code and indented a further four. Blocks are separated by one blank line.
+// Renders the doc body indented four: wrapped paragraphs, bulleted lists with a hanging indent, highlighted code examples indented a further four.
 function renderDocBody(doc: string, options: RenderOptions): string[] {
   const sections = docBlocks(doc).map((block) => {
     if (block.kind === "paragraph") return wrapText(plainText(block.text), Math.max(1, options.width - 4)).map((l) => `    ${l}`);
@@ -70,8 +69,7 @@ export function renderSymbol(
 ): string {
   const lines: string[] = [`${packageName}@${packageVersion}`, ""];
 
-  // One line per overload (ADR-0011). Unindented sets the left margin, not a promise each fits on one line — a large
-  // enum or interface member list routinely doesn't, so wrapped continuations hang by four to keep overloads distinct.
+  // One line per overload; wrapped continuations hang by four so overloads stay distinct.
   for (const overload of symbol.signature.split("\n")) {
     const displaySignature = overload.replace(/^export\s+/, "").replace(/^declare\s+/, "").replace(/;$/, "");
     const wrapped = wrapText(displaySignature, Math.max(1, options.width - 4));

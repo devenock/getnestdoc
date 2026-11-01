@@ -51,7 +51,7 @@ function bundledNote(packageName: string, packageVersion: string): string {
   return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${packageName}\` to match your own version)`;
 }
 
-// A miss: headline and suggestions on stderr so piped stdout stays empty (SPEC.md §4.4), exit 1.
+// Writes a miss to stderr, so piped stdout stays empty, and exits 1.
 function writeMiss(headline: string, suggestions: string[]): void {
   process.stderr.write(`${headline}\n`);
   if (suggestions.length > 0) {
@@ -98,8 +98,7 @@ async function writeBareResult(result: { output: string; exitCode: 0 | 1 } | { e
 
 export function createProgram(dataDir: string): Command {
   const program = new Command();
-  // Throw instead of exiting, so main.ts can map usage errors to exit 2. Must precede `.command("update")` below:
-  // commander copies this setting into a subcommand only when the subcommand is created.
+  // Throws instead of exiting so main.ts can map usage errors to exit 2; must precede `.command()`, since commander copies it into a subcommand only at creation.
   program.exitOverride();
 
   program
@@ -164,8 +163,7 @@ export function createProgram(dataDir: string): Command {
               return;
             }
 
-            // The package exists but has no such export — a definitive miss, answered from that package's own export
-            // list (ARCHITECTURE.md §10), unless the whole query is itself a package name with a dot in it.
+            // The package resolved but lacks the export: a definitive miss with near matches from its own exports, unless the whole dotted query is itself a package name.
             if ((await resolvePackageSymbolsOrBundled(query, cwd, dataDir)).status !== "found") {
               const prefix = shorthandFor(packageName);
               writeMiss(

@@ -9,8 +9,7 @@ export function sanitizeExtractedText(text: string): string {
   return text.replace(CONTROL_CHARS_RE, "");
 }
 
-// Every string field of a record, in one place — so a field added to SymbolRecord later has exactly one place to be
-// added here, and extraction and cache reads can't drift apart (ADR-0009).
+// Sanitizes every string field of a record, shared by extraction and cache reads so a new field is added in one place.
 export function sanitizeSymbolRecord(symbol: SymbolRecord): SymbolRecord {
   return {
     ...symbol,

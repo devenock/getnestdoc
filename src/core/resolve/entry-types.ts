@@ -7,15 +7,13 @@ function isFile(path: string): boolean {
   return existsSync(path) && statSync(path).isFile();
 }
 
-// A package-relative path to a real file inside the package, or undefined — a directory, a missing path, or anything
-// a crafted `types`/`exports`/`main` value points outside the package (`"../../x.d.ts"`) is never an entry point.
+// A package-relative path to a real file inside the package, or undefined — directories and anything a crafted field points outside the package are never entry points.
 function fileAt(packageDir: string, relativePath: string): string | undefined {
   const candidate = join(packageDir, relativePath);
   return isFile(candidate) && isContained(packageDir, candidate) ? candidate : undefined;
 }
 
-// The declaration file beside a JS entry: .js -> .d.ts, .mjs -> .d.mts, .cjs -> .d.cts. An extensionless
-// path (`"main": "./lib"`) gets Node's own fallbacks: <path>.d.ts, then <path>/index.d.ts.
+// The declaration file beside a JS entry (.js -> .d.ts, .mjs -> .d.mts, .cjs -> .d.cts); an extensionless path gets Node's <path>.d.ts then <path>/index.d.ts fallbacks.
 function siblingDts(packageDir: string, jsPath: string): string | undefined {
   const ext = /\.([mc]?)js$/.exec(jsPath);
   if (ext) return fileAt(packageDir, `${jsPath.slice(0, -ext[0].length)}.d.${ext[1]}ts`);
@@ -47,9 +45,7 @@ function rootExportTarget(exportsField: unknown): unknown {
 
 type ExportCandidate = { path: string; isTypes: boolean };
 
-// Flattens an exports target — a string, a fallback array, or nested condition objects (`{ import: { types, default } }`)
-// — into candidate paths in priority order. A `types` condition is visited first at every level; any string reached
-// under one, or ending in .d.ts/.d.mts/.d.cts, is a declaration file rather than a JS entry.
+// Flattens an exports target (string, fallback array, or nested conditions) into candidates in priority order; a `types` condition is visited first at every level.
 function collectExportCandidates(target: unknown, underTypes: boolean, out: ExportCandidate[]): void {
   if (typeof target === "string") {
     out.push({ path: target, isTypes: underTypes || /\.d\.[mc]?ts$/.test(target) });

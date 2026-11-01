@@ -22,8 +22,6 @@ function dedent(lines: string[]): string {
 }
 
 // Splits a JSDoc body (markdown, as Nest writes it) into paragraphs, bullet lists, and fenced code examples.
-// Flattening all of it into one paragraph used to merge separate paragraphs and turn a ```typescript fence into
-// prose ("For example: typescript async create(...)").
 export function docBlocks(doc: string): DocBlock[] {
   const blocks: DocBlock[] = [];
   const lines = doc.split("\n");

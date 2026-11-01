@@ -18,16 +18,12 @@ export type UpdateResult = {
   dataDir: string;
 };
 
-// Where `nest-doc update` writes, and where guide lookups look first (ADR-0013): a per-user directory scoped to this
-// tool version. Never the package's own install directory — that's root-owned for a system-wide global install
-// (EACCES, verified), and every reinstall or upgrade overwrites it anyway.
+// Where `nest-doc update` writes: per user and per tool version, never the package's own install directory, which can be root-owned and is replaced by every reinstall.
 export function userGuideDataDir(toolVersion: string): string {
   return join(getDataHome(), toolVersion);
 }
 
-// The directory guides.json/aliases.json load from: the user's updated corpus for this tool version when both files
-// exist, else the release's own. Version-scoping means an upgrade's newer bundled corpus is never shadowed by a stale
-// update made under an older version. Two existsSync calls — negligible on the hot path.
+// The user's updated corpus for this tool version when both files exist, else the release's own; version-scoping keeps an older update from shadowing a newer release.
 export function activeGuideDataDir(packagedDataDir: string, toolVersion: string): string {
   const userDir = userGuideDataDir(toolVersion);
   return existsSync(join(userDir, "guides.json")) && existsSync(join(userDir, "aliases.json")) ? userDir : packagedDataDir;
@@ -50,8 +46,7 @@ function writeAtomic(path: string, contents: string): void {
   renameSync(tempPath, path);
 }
 
-// `nest-doc update` is the only networked command, reusing the same fetch/transform pipeline the build scripts run at release time; `ts`/`marked` load through their lazy loaders so other commands never pay to load them.
-// Writes into userGuideDataDir(toolVersion), then removes corpora left behind by other tool versions.
+// `nest-doc update` is the only networked command, reusing the same fetch/transform pipeline the build scripts run at release time; `ts`/`marked` load through their lazy loaders so other commands never pay to load them. Writes into userGuideDataDir(toolVersion), then removes corpora left by other tool versions.
 export async function runUpdate(toolVersion: string): Promise<UpdateResult> {
   const dataDir = userGuideDataDir(toolVersion);
   const [ts, marked] = await Promise.all([loadTypeScript(), loadMarked()]);

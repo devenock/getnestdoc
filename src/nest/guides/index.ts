@@ -29,9 +29,7 @@ export function findGuide(query: string, guidesFile: GuidesFile, aliasFile: Alia
   return undefined;
 }
 
-// Compares anchors ignoring punctuation: stored anchors follow docs.nestjs.com's own implicit-id rule (whitespace to
-// "-", lowercased — header-anchor.directive.ts), which keeps punctuation ("factory-providers:-usefactory"), while
-// links in the corpus are often written without it ("#factory-providers-usefactory").
+// Compares anchors ignoring punctuation: stored anchors follow the docs site's implicit ids, which keep it ("factory-providers:-usefactory"), while links in the corpus often drop it.
 function looseAnchor(anchor: string): string {
   return anchor.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
@@ -43,8 +41,7 @@ export type GuideLookup = {
   missingAnchor?: string;
 };
 
-// Resolves "slug" or "slug#anchor" — the form every rendered internal link prints as a runnable hint. A matched anchor
-// narrows to that heading's section: up to the next heading of the same or shallower depth.
+// Resolves "slug" or "slug#anchor"; a matched anchor narrows to that heading's section, up to the next heading of the same or shallower depth.
 export function findGuideSection(query: string, guidesFile: GuidesFile, aliasFile: AliasFile): GuideLookup | undefined {
   const hashIndex = query.indexOf("#");
   const guide = findGuide(hashIndex === -1 ? query : query.slice(0, hashIndex), guidesFile, aliasFile);

@@ -26,8 +26,7 @@ function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot:
   return isContained(packageRoot, resolved) ? resolved : undefined;
 }
 
-// Function overloads become one record (ADR-0011): one signature line per overload, the first documented overload's
-// prose, and the union of every overload's tags (@param deduplicated by parameter name) and @see links.
+// Merges overloads into one record: the first documented overload's prose, plus every overload's tags (@param deduplicated by name) and @see links.
 function mergeOverloadDocs(docs: JsDocResult[]): JsDocResult {
   const primary = docs.find((d) => d.doc.length > 0) ?? docs[0]!;
   const tags: JsDocResult["tags"] = [];
@@ -81,21 +80,17 @@ function buildSymbolRecord(
   });
 }
 
-// What a visit asks a file for: everything it exports, or specific names — keyed by the name *this file* exports,
-// mapped to the name(s) the record should finally carry (`export { Foo as Bar }` asks for Foo, records Bar).
+// What a visit asks a file for: everything, or specific names keyed by the name that file exports, mapped to the name(s) the record finally carries (`export { Foo as Bar }` asks for Foo, records Bar).
 type ExportRequest = "all" | Map<string, string[]>;
 
-// Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads.
-// `packageRoot` is the package directory (EntryResolution.packageRoot): no file outside it is ever read, and each
-// record's `file` is relative to it.
+// Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads. `packageRoot` bounds every file read, and each record's `file` is relative to it.
 export async function extractPackage(entryFile: string, packageRoot: string): Promise<SymbolRecord[]> {
   const ts = await loadTypeScript();
   if (!isContained(packageRoot, entryFile)) return [];
 
   const parsed = new Map<string, { sourceFile: TS.SourceFile; exports: FileExports }>();
   const records = new Map<string, SymbolRecord>();
-  // Termination: an "all" visit happens once per file; a named visit once per (file, name, final name) — tracking
-  // the file alone dropped names when the same file was reached twice with different name filters.
+  // An "all" visit runs once per file, a named visit once per (file, name, final name) — per-file tracking alone drops names when a file is reached twice with different filters.
   const visitedAll = new Set<string>();
   const visitedNames = new Set<string>();
 

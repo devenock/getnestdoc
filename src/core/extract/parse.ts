@@ -19,8 +19,7 @@ export type ExportForward =
   | { kind: "wildcard"; specifier: string }
   | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };
 
-// Everything one file exports: declarations it owns (keyed by exported name — several entries means overloads or
-// declaration merging), and re-exports to follow.
+// Everything one file exports: its own declarations keyed by exported name (several entries means overloads or declaration merging), and re-exports to follow.
 export type FileExports = {
   declarations: Map<string, DeclarationEntry[]>;
   forwards: ExportForward[];
@@ -53,9 +52,7 @@ function addTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   else if (!list.includes(value)) list.push(value);
 }
 
-// Builds a file's export table. Three shapes beyond `export declare ...` matter in real .d.ts output:
-// `export { A as B } from "./x"` (named re-export, possibly aliased), `declare class A {}; export { A as B }` (a local
-// export list — how rollup/tsup-bundled declaration files export everything), and `import { A } from "./x"; export { A }`.
+// Builds a file's export table, covering `export { A as B } from`, local export lists (`declare class A {}; export { A as B }`, how bundled declaration files export), and `import { A } from; export { A }`.
 export function getFileExports(ts: typeof TS, sourceFile: TS.SourceFile): FileExports {
   const local = new Map<string, DeclarationEntry[]>();
   const declarations = new Map<string, DeclarationEntry[]>();

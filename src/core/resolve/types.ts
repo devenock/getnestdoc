@@ -1,5 +1,4 @@
-// A minimal shape of the package.json fields resolution actually reads — no canonical PackageJson type ships with Node, and a dependency for it is more than this needs.
-// `exports` stays `unknown`: its real shape is recursive (strings, fallback arrays, nested condition objects) and third-party, so entry-types.ts narrows it at every step.
+// A minimal shape of the package.json fields resolution actually reads — no canonical PackageJson type ships with Node, and a dependency for it is more than this needs. `exports` stays `unknown`: its real shape is recursive and third-party, so it's narrowed at every step.
 export type PackageManifest = {
   name?: string;
   version?: string;

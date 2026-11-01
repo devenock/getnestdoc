@@ -7,8 +7,7 @@ function stringField(raw: Record<string, unknown>, key: string): string | undefi
   return typeof value === "string" ? value : undefined;
 }
 
-// package.json is third-party input (ADR-0009): keep only fields of the type resolution expects, so a crafted
-// `"types": 5` or `"version": {}` degrades to "field absent" instead of a TypeError further down.
+// package.json is third-party input: keep only correctly-typed fields, so `"types": 5` degrades to an absent field instead of a TypeError.
 function normaliseManifest(raw: Record<string, unknown>): PackageManifest {
   const manifest: PackageManifest = {};
   for (const key of ["name", "version", "main", "types", "typings"] as const) {
@@ -37,10 +36,7 @@ function tryLoad(name: string, nameParts: string[], nodeModulesDir: string): Fou
   return { name, packageDir, nodeModulesDir, manifest: normaliseManifest(raw as Record<string, unknown>) };
 }
 
-// The node_modules directory the running program itself is installed in, if any. For a global install this *is* the
-// global root, whatever the prefix: `<prefix>/bin/nest-doc` is a symlink into `<prefix>/lib/node_modules/getnestdoc/`,
-// and argv[1]'s real path walks up to it. This is the case process.execPath can't see — Homebrew's execPath resolves
-// into its Cellar (`.../Cellar/node/<v>/bin/node`, verified), not the prefix whose lib/node_modules holds the globals.
+// The node_modules the running script is installed in — for a global install, the global root under any prefix, including Homebrew, whose execPath resolves into its Cellar instead.
 function ownNodeModulesDir(): string | undefined {
   const script = process.argv[1];
   if (!script) return undefined;
@@ -58,9 +54,7 @@ function ownNodeModulesDir(): string | undefined {
   return dir;
 }
 
-// Global npm roots to try after the upward walk, cheapest signal first, no `npm root -g` subprocess (100ms+ on a path
-// that has to stay fast). The execPath-derived root covers the official installer and nvm layouts. A global package
-// installed somewhere neither points at (e.g. Volta, which isolates each global package) is an accepted gap.
+// Global roots to try after the upward walk, with no `npm root -g` subprocess (100ms+); a layout neither points at, such as Volta's per-package isolation, is an accepted gap.
 function globalNodeModulesDirs(): string[] {
   const nodeDir = dirname(process.execPath);
   const fromExecPath = process.platform === "win32" ? join(nodeDir, "node_modules") : join(dirname(nodeDir), "lib", "node_modules");

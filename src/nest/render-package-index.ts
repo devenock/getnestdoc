@@ -36,10 +36,7 @@ function truncate(text: string, width: number): string {
 // Narrowest the right-hand column may get before the left column is capped instead.
 const MIN_RIGHT_COLUMN = 16;
 
-// Two aligned columns indented two: `left` padded to a shared column width, `right` truncated to what's left. The
-// column width is the widest left entry plus four, capped so `right` keeps MIN_RIGHT_COLUMN at narrow terminals; an
-// entry wider than the cap puts `right` on its own line under the column. Only an identifier or command longer than
-// the whole terminal can still overflow — breaking it would make it uncopyable.
+// Two aligned columns with the left column capped so the right keeps MIN_RIGHT_COLUMN; a wider entry puts its right text on the next line, so only an unbreakable token can overflow.
 function columnRows(rows: { left: string; right: string }[], width: number): string[] {
   const natural = Math.max(...rows.map((r) => r.left.length)) + 4;
   const colWidth = Math.min(natural, Math.max(8, width - 2 - MIN_RIGHT_COLUMN));
