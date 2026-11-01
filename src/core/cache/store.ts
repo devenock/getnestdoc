@@ -4,9 +4,12 @@ import type { SymbolRecord } from "../extract/types.ts";
 import { sanitizeSymbolRecord } from "../extract/sanitize.ts";
 import { getCacheFilePath } from "./paths.ts";
 
-// `version` is the cache format version, separate from packageVersion, which already sits in the filename.
+// `version` is the cache format version, separate from packageVersion, which already sits in the filename. Bumped
+// whenever extraction output changes for the same package version — entries are keyed by package version, so without
+// a bump a tool upgrade would keep serving records produced by the old extractor. 2: overload merging, aliased and
+// local re-exports, package-relative `file` (ADR-0009, ADR-0011).
 export type CacheFile = {
-  version: 1;
+  version: typeof CACHE_FORMAT_VERSION;
   package: string;
   packageVersion: string;
   entryFile: string;
@@ -14,7 +17,7 @@ export type CacheFile = {
   symbols: SymbolRecord[];
 };
 
-const CACHE_FORMAT_VERSION = 1;
+export const CACHE_FORMAT_VERSION = 2;
 let warnedUnwritable = false;
 let warnedUnsafePath = false;
 

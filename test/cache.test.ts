@@ -6,7 +6,7 @@ import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getCacheDir, getCacheFilePath } from "../src/core/cache/paths.ts";
-import { readCache, writeCache } from "../src/core/cache/store.ts";
+import { CACHE_FORMAT_VERSION, readCache, writeCache } from "../src/core/cache/store.ts";
 import type { CacheFile } from "../src/core/cache/store.ts";
 import { resolvePackageSymbols } from "../src/nest/symbols.ts";
 
@@ -19,7 +19,7 @@ function tempCacheDir(): string {
 
 function sampleCacheFile(overrides: Partial<CacheFile> = {}): CacheFile {
   return {
-    version: 1,
+    version: CACHE_FORMAT_VERSION,
     package: "@nestjs/common",
     packageVersion: "12.0.1",
     entryFile: "/x/index.d.ts",
@@ -101,13 +101,15 @@ test("truncated JSON self-heals: deleted, treated as a miss, and a fresh write s
   }
 });
 
-test("a CacheFile.version mismatch is treated as a miss, not an error", () => {
+// Format 1 entries were written by the extractor before overload merging and aliased/local re-export handling
+// (ADR-0011) — same package version, different (wrong) records. They must never be served after an upgrade.
+test("a CacheFile.version mismatch (e.g. a format-1 entry from the old extractor) is treated as a miss, not an error", () => {
   const cacheDir = tempCacheDir();
   try {
     mkdirSync(cacheDir, { recursive: true });
     const filePath = mustGetCacheFilePath(cacheDir, "@nestjs/common", "12.0.1");
     // @ts-expect-error deliberately writing an incompatible format version
-    writeFileSync(filePath, JSON.stringify(sampleCacheFile({ version: 2 })));
+    writeFileSync(filePath, JSON.stringify(sampleCacheFile({ version: 1 })));
 
     const result = readCache(cacheDir, "@nestjs/common", "12.0.1");
     assert.equal(result, undefined);
@@ -289,7 +291,7 @@ test("readCache strips raw escape sequences from an already-cached entry, not ju
 // `symbols.map`, exit 4. ARCHITECTURE.md §10: a corrupt entry is deleted, re-extracted, and the lookup continues.
 test("a parseable cache entry with the wrong shape is deleted and treated as a miss, never a crash", () => {
   const malformed: unknown[] = [
-    { version: 1 },
+    { version: CACHE_FORMAT_VERSION },
     sampleCacheFile({ symbols: "nope" as unknown as CacheFile["symbols"] }),
     sampleCacheFile({ symbols: [{ name: "X" }] as unknown as CacheFile["symbols"] }),
     sampleCacheFile({

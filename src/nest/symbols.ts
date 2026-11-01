@@ -2,7 +2,7 @@ import { extractPackage } from "../core/extract/barrels.ts";
 import type { SymbolRecord } from "../core/extract/types.ts";
 import { own } from "../core/own.ts";
 import { getCacheDir } from "../core/cache/paths.ts";
-import { readCache, writeCache } from "../core/cache/store.ts";
+import { CACHE_FORMAT_VERSION, readCache, writeCache } from "../core/cache/store.ts";
 import { describeInvalidManifest, describeUnusablePackage, resolveEntryTypes } from "../core/resolve/entry-types.ts";
 import { findPackageDir } from "../core/resolve/find-package.ts";
 import { expandPackageShorthand } from "./package-scope.ts";
@@ -42,7 +42,7 @@ export async function resolvePackageSymbols(rawName: string, startDir: string): 
 
   const symbols = await extractPackage(entryResolution.entryFile, entryResolution.packageRoot);
   writeCache(cacheDir, {
-    version: 1,
+    version: CACHE_FORMAT_VERSION,
     package: packageName,
     packageVersion,
     entryFile: entryResolution.entryFile,
