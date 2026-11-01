@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0](https://github.com/devenock/getnestdoc/compare/v0.4.0...v0.5.0) (2026-11-01)
+
+
+### Features
+
+* resolve subpath entry points such as @nestjs/platform-fastify/multipart ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+
+
+### Bug Fixes
+
+* find global packages next to nest-doc's own install ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* follow re-exports from installed dependencies (getQueueToken, JOB_REF, EventEmitter2) ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* keep paragraphs, lists, and code examples in symbol docs ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* make printed slug#anchor hints resolve to guide sections ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* match package directories case-exactly ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* merge function overloads and merged declarations into one symbol record ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* record aliased re-exports under their exported name, and follow local export lists ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* record default exports, never through export * ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* report a malformed package.json or unusable installed package accurately instead of crashing ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* resolve an ambiguous bare name to its only installed owner ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* resolve nested export conditions and .mjs/.cjs declaration files ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* **security:** keep entry resolution and barrel walks inside the package ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* suggest near-match symbols on a miss ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+* write nest-doc update output to a per-user data directory ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+
+
+### Performance Improvements
+
+* skip the fallback scan for installs the bundled index already covers ([ded36b5](https://github.com/devenock/getnestdoc/commit/ded36b597a173f7ac0bf76732fff9e74aa18f510))
+
 ## [0.4.0](https://github.com/devenock/getnestdoc/compare/v0.3.1...v0.4.0) (2026-09-08)
 
 
