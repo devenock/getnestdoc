@@ -14,7 +14,7 @@ A single global npm package. One binary. Data that ships inside the package, plu
 ┌──────────────────────────────────────────────────────────────────┐
 │  npm i -g getnestdoc                                             │
 │                                                                  │
-│  dist/nest-doc.mjs     190 KB   bundled CLI                      │
+│  dist/nest-doc.mjs     198 KB   bundled CLI                      │
 │  data/guides.json      4.0 MB   pre-tokenised guide corpus       │
 │  data/aliases.json       7 KB   URL → guide slug table           │
 │  data/names.json        60 KB   bare symbol name → package(s)    │
