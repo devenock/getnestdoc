@@ -70,11 +70,19 @@ Three Nest majors for `@nestjs/common`, because packaging changed across them an
 Runs in CI on every commit.
 
 ```
-scripts/bench.ts
-  → spawn the built binary N=20 times
-  → discard first 3 (page cache warmup)
+scripts/bench.ts [--budget=ms] [--cwd=dir] [query]
+  → fresh, empty XDG_CACHE_HOME and XDG_DATA_HOME for the whole invocation
+  → spawn the built binary N=20 times from --cwd
+  → discard first 3 (page cache warmup — and, for a symbol query, the one cold extraction)
   → report median and p95
   → exit 1 if median exceeds the threshold
 ```
 
-Thresholds live in the `--budget` argument at each call site in `scripts/bench.ts`'s own usage and in CI.
+Thresholds live in the `--budget` argument at each call site in CI (`.github/workflows/ci.yml`, mirrored in `publish.yml`):
+
+| Call | Path measured | Budget |
+|---|---|---|
+| `bench` | `--version` — process start plus CLI framework, the floor | 60 ms |
+| `bench -- --budget=150 interceptors` | guide lookup | 150 ms |
+| `bench -- --budget=150 --cwd=test/fixtures common.Injectable` | symbol lookup, cached live `node_modules` | 150 ms |
+| `bench -- --budget=150 --cwd=test/fixtures throttler.Throttle` | symbol lookup, bundled fallback (ADR-0010) | 150 ms |

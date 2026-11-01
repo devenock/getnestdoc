@@ -28,3 +28,8 @@ jobs:
       - run: npm run bench
 
       - run: npm run bench -- --budget=150 interceptors
+
+      # The symbol hot path: a cached live lookup against the committed fixtures, and the bundled fallback.
+      - run: npm run bench -- --budget=150 --cwd=test/fixtures common.Injectable
+
+      - run: npm run bench -- --budget=150 --cwd=test/fixtures throttler.Throttle
