@@ -212,7 +212,7 @@ export { Abstract, ArgumentMetadata, ... }    // named     → recurse, filter
   from './interfaces/index.js';
 ```
 
-Both must be followed. Handling only the wildcard form finds 155 of 206 exports — the ~50 interface names come through the named form. Specifiers are written with `.js` extensions (ESM); rewrite to `.d.ts` (`.mjs`/`.cjs` to `.d.mts`/`.d.cts`), and fall back to `<spec>/index.d.ts` for directory specifiers. A bare cross-package specifier, or anything resolving outside the package directory, isn't followed.
+Both must be followed. Handling only the wildcard form finds 155 of 206 exports — the ~50 interface names come through the named form. Specifiers are written with `.js` extensions (ESM); rewrite to `.d.ts` (`.mjs`/`.cjs` to `.d.mts`/`.d.cts`), and fall back to `<spec>/index.d.ts` for directory specifiers. A relative specifier resolving outside the package directory isn't followed. A bare specifier naming another package (`export { getQueueToken, JOB_REF } from '@nestjs/bull-shared'` in `@nestjs/bull`/`@nestjs/bullmq`; `export { EventEmitter2 } from 'eventemitter2'` in `@nestjs/event-emitter@3`) is followed into that installed dependency — found Node-style from the re-exporting file's real path, so pnpm's store layout works — and walked inside the dependency's own root. Only a valid bare package name is ever looked up: subpaths, `node:` builtins, and anything path-shaped are skipped.
 
 Three more shapes appear in real declaration files and are handled the same way:
 
@@ -236,7 +236,7 @@ For each exported name, from its declaration node(s):
 | `signature` | `node.getText()`, JSDoc blocks stripped, whitespace collapsed |
 | `see` | `tags` filtered to `see`, link text and URL parsed out |
 | `isPublicApi` | `tags` includes `publicApi` |
-| `file`, `line` | declaration site, `file` relative to the package directory — provenance only, not rendered |
+| `file`, `line` | declaration site, `file` relative to the package directory (prefixed with the dependency's name for a symbol re-exported from one) — provenance only, not rendered |
 
 Function overloads merge into one record (ADR-0011): one signature line per overload, the first documented overload's prose, the union of tags and `@see` links. Every string field passes through `sanitize.ts` before it's cached or printed (ADR-0009).
 

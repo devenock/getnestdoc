@@ -1,6 +1,8 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { isContained } from "../contain.ts";
+import { resolveEntryTypes } from "../resolve/entry-types.ts";
+import { findPackageDir } from "../resolve/find-package.ts";
 import type { DeclarationEntry, FileExports } from "./parse.ts";
 import { getFileExports, parseSourceFile } from "./parse.ts";
 import type { JsDocResult } from "./jsdoc.ts";
@@ -11,12 +13,8 @@ import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
 import type TS from "typescript";
 
-// Resolves a barrel's export specifier (written with .js for ESM) to a real .d.ts path, refusing anything outside
-// packageRoot. A specifier can also be a bare cross-package import (e.g. "@scope/other-pkg", re-exporting a peer
-// dependency's own exports) rather than a relative path within this package — that's out of scope for a single
-// package's barrel walk, and correctly falls through the existsSync check below rather than resolving to a bogus,
-// nonexistent nested path that would crash the caller.
-function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot: string): string | undefined {
+// Resolves a relative export specifier (written with .js for ESM) to a real .d.ts path, refusing anything outside packageRoot.
+function resolveRelativeSpecifier(fromDir: string, specifier: string, packageRoot: string): string | undefined {
   // .js -> .d.ts, .mjs -> .d.mts, .cjs -> .d.cts; an extensionless specifier gets .d.ts.
   const ext = /\.([mc]?)js$/.exec(specifier);
   const withoutExt = ext ? specifier.slice(0, -ext[0].length) : specifier;
@@ -24,6 +22,36 @@ function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot:
   const resolved = existsSync(direct) ? direct : join(fromDir, withoutExt, "index.d.ts");
   if (!existsSync(resolved) || !statSync(resolved).isFile()) return undefined;
   return isContained(packageRoot, resolved) ? resolved : undefined;
+}
+
+// A bare package name exactly as npm allows one — no subpath, no "."/".." segment, no "node:" prefix — so a bare specifier can only ever name a package directory.
+const PACKAGE_NAME_RE = /^(?:@[a-zA-Z0-9~-][\w.~-]*\/)?[a-zA-Z0-9~-][\w.~-]*$/;
+
+// The package a file belongs to: every file read is contained by `root`; `label` names a dependency reached through a bare re-export.
+type Scope = { root: string; label?: string };
+
+// Follows a bare re-export (`export { getQueueToken } from "@nestjs/bull-shared"`) into the installed dependency, found Node-style from the re-exporting file's real path (so pnpm's store layout resolves too).
+function resolveBareSpecifier(fromDir: string, specifier: string): { entryFile: string; scope: Scope } | undefined {
+  if (!PACKAGE_NAME_RE.test(specifier)) return undefined;
+  let realDir: string;
+  try {
+    realDir = realpathSync(fromDir);
+  } catch {
+    return undefined;
+  }
+  const found = findPackageDir(specifier, realDir);
+  if (!found || found.manifestError) return undefined;
+  const entry = resolveEntryTypes(found);
+  return entry.found ? { entryFile: entry.entryFile, scope: { root: entry.packageRoot, label: specifier } } : undefined;
+}
+
+function resolveModuleSpecifier(fromDir: string, specifier: string, scope: Scope): { file: string; scope: Scope } | undefined {
+  if (specifier.startsWith("./") || specifier.startsWith("../")) {
+    const file = resolveRelativeSpecifier(fromDir, specifier, scope.root);
+    return file ? { file, scope } : undefined;
+  }
+  const bare = resolveBareSpecifier(fromDir, specifier);
+  return bare ? { file: bare.entryFile, scope: bare.scope } : undefined;
 }
 
 // Merges overloads into one record: the first documented overload's prose, plus every overload's tags (@param deduplicated by name) and @see links.
@@ -57,7 +85,7 @@ function buildSymbolRecord(
   entries: DeclarationEntry[],
   sourceFile: TS.SourceFile,
   filePath: string,
-  packageRoot: string,
+  scope: Scope,
 ): SymbolRecord {
   // Same-name declarations that aren't all function overloads (declaration merging) keep the last one, as before.
   const isOverloadSet = entries.length > 1 && entries.every((e) => e.kind === "function");
@@ -75,7 +103,7 @@ function buildSymbolRecord(
     tags,
     see,
     isPublicApi,
-    file: relative(packageRoot, filePath),
+    file: scope.label ? `${scope.label}/${relative(scope.root, filePath)}` : relative(scope.root, filePath),
     line: line + 1, // 1-based
   });
 }
@@ -83,7 +111,7 @@ function buildSymbolRecord(
 // What a visit asks a file for: everything, or specific names keyed by the name that file exports, mapped to the name(s) the record finally carries (`export { Foo as Bar }` asks for Foo, records Bar).
 type ExportRequest = "all" | Map<string, string[]>;
 
-// Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads. `packageRoot` bounds every file read, and each record's `file` is relative to it.
+// Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads. `packageRoot` bounds every file read from the package itself, and each record's `file` is relative to it (prefixed with the dependency's name for a symbol re-exported from one).
 export async function extractPackage(entryFile: string, packageRoot: string): Promise<SymbolRecord[]> {
   const ts = await loadTypeScript();
   if (!isContained(packageRoot, entryFile)) return [];
@@ -126,7 +154,7 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
     return remaining.size > 0 ? remaining : undefined;
   }
 
-  function visit(filePath: string, rawRequest: ExportRequest): void {
+  function visit(filePath: string, rawRequest: ExportRequest, scope: Scope): void {
     const request = pending(filePath, rawRequest);
     if (!request) return;
 
@@ -136,17 +164,17 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
       const finals = request === "all" ? [name] : (request.get(name) ?? []);
       for (const finalName of finals) {
         // First occurrence wins, so a name reachable through several barrels is recorded once.
-        if (!records.has(finalName)) records.set(finalName, buildSymbolRecord(ts, finalName, entries, sourceFile, filePath, packageRoot));
+        if (!records.has(finalName)) records.set(finalName, buildSymbolRecord(ts, finalName, entries, sourceFile, filePath, scope));
       }
     }
 
     const fileDir = dirname(filePath);
     for (const forward of exports.forwards) {
-      const targetFile = resolveModuleSpecifier(fileDir, forward.specifier, packageRoot);
-      if (!targetFile) continue;
+      const target = resolveModuleSpecifier(fileDir, forward.specifier, scope);
+      if (!target) continue;
 
       if (forward.kind === "wildcard") {
-        visit(targetFile, request);
+        visit(target.file, request, target.scope);
         continue;
       }
 
@@ -155,10 +183,10 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
         const finals = request === "all" ? [exportedName] : (request.get(exportedName) ?? []);
         if (finals.length > 0) subRequest.set(sourceName, [...(subRequest.get(sourceName) ?? []), ...finals]);
       }
-      if (subRequest.size > 0) visit(targetFile, subRequest);
+      if (subRequest.size > 0) visit(target.file, subRequest, target.scope);
     }
   }
 
-  visit(entryFile, "all");
+  visit(entryFile, "all", { root: packageRoot });
   return [...records.values()];
 }

@@ -140,7 +140,7 @@ Path: `${XDG_CACHE_HOME:-~/.cache}/getnestdoc/<name>@<version>.json`, with `/` i
 
 ```ts
 type CacheFile = {
-  version: 2;            // bump invalidates every entry — bumped whenever extraction output changes
+  version: 3;            // bump invalidates every entry — bumped whenever extraction output changes
   package: string;
   packageVersion: string;
   entryFile: string;     // absolute path extraction started from
@@ -156,7 +156,7 @@ type SymbolRecord = {
   tags: { name: string; text: string }[];
   see: { text: string; url: string }[];
   isPublicApi: boolean;
-  file: string;          // relative to package root
+  file: string;          // relative to package root; "<dependency>/<path>" when re-exported from a dependency
   line: number;          // 1-based
 };
 ```

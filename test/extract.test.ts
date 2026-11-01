@@ -1,6 +1,6 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -297,4 +297,89 @@ test("a declaration both exported inline and listed again in a local export list
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// Writes `files` (path -> contents) under a fresh root and extracts node_modules/<pkg>, the way a real install lays it out.
+async function extractInstalled(files: Record<string, string>, pkg: string, entryRelative = "index.d.ts"): Promise<SymbolRecord[]> {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-bare-reexport-test-"));
+  try {
+    mkdirSync(join(root, ".git"));
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    const packageDir = join(root, "node_modules", pkg);
+    return await extractPackage(join(packageDir, entryRelative), packageDir);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const depManifest = (name: string) => JSON.stringify({ name, version: "1.0.0", types: "index.d.ts" });
+
+// Verified against the latest Nest 10/11/12 installs: @nestjs/bull and @nestjs/bullmq re-export getQueueToken and
+// JOB_REF from @nestjs/bull-shared, and @nestjs/event-emitter@3 re-exports EventEmitter2 from eventemitter2 — real,
+// documented API that a walk refusing every bare specifier silently dropped.
+test("a bare re-export from an installed dependency is followed into that package", async () => {
+  const records = await extractInstalled(
+    {
+      "node_modules/@nestjs/bull/index.d.ts": `export { getQueueToken, JOB_REF } from "@nestjs/bull-shared";\nexport * from "eventemitter2";\nexport declare const Own: 1;\n`,
+      "node_modules/@nestjs/bull-shared/package.json": depManifest("@nestjs/bull-shared"),
+      "node_modules/@nestjs/bull-shared/index.d.ts": `export * from "./utils.js";\n`,
+      "node_modules/@nestjs/bull-shared/utils.d.ts": `/** Returns the queue's DI token. */\nexport declare function getQueueToken(name?: string): string;\nexport declare const JOB_REF = "JOB_REF";\nexport declare const NOT_REEXPORTED: 1;\n`,
+      "node_modules/eventemitter2/package.json": depManifest("eventemitter2"),
+      "node_modules/eventemitter2/index.d.ts": `export declare class EventEmitter2 {}\n`,
+    },
+    "@nestjs/bull",
+  );
+  assert.deepEqual(records.map((r) => r.name).sort(), ["EventEmitter2", "getQueueToken", "JOB_REF", "Own"].sort());
+  const token = records.find((r) => r.name === "getQueueToken")!;
+  assert.equal(token.doc, "Returns the queue's DI token.");
+  assert.equal(token.file, "@nestjs/bull-shared/utils.d.ts", "file names the dependency it came from");
+});
+
+test("a bare re-export resolves from the re-exporting file's real path (pnpm's store layout)", async () => {
+  const store = "node_modules/.pnpm/@nestjs+bull@1.0.0/node_modules";
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-pnpm-reexport-test-"));
+  try {
+    mkdirSync(join(root, ".git"));
+    const write = (path: string, contents: string) => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    };
+    write(`${store}/@nestjs/bull/index.d.ts`, `export { getQueueToken } from "@nestjs/bull-shared";\n`);
+    write(`${store}/@nestjs/bull-shared/package.json`, depManifest("@nestjs/bull-shared"));
+    write(`${store}/@nestjs/bull-shared/index.d.ts`, `export declare function getQueueToken(): string;\n`);
+    // Only the direct dependency is linked at the top level, as pnpm does; bull-shared exists only inside the store.
+    mkdirSync(join(root, "node_modules", "@nestjs"), { recursive: true });
+    symlinkSync(join(root, store, "@nestjs", "bull"), join(root, "node_modules", "@nestjs", "bull"));
+    const packageDir = join(root, "node_modules", "@nestjs", "bull");
+    const records = await extractPackage(join(packageDir, "index.d.ts"), packageDir);
+    assert.deepEqual(records.map((r) => r.name), ["getQueueToken"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// SECURITY (ADR-0009): a bare specifier is third-party text too. Only a valid package name is ever looked up, and
+// the dependency is walked inside its own root — so nothing here can read outside an installed package.
+test("bare specifiers can't be used to escape: traversal, subpaths, node: builtins, and relative escapes from a dependency", async () => {
+  const records = await extractInstalled(
+    {
+      "node_modules/evil/index.d.ts": [
+        `export * from "dep/../../secret/leak";`,
+        `export * from "@scope/../secret/leak";`,
+        `export * from "dep/sub";`,
+        `export * from "node:events";`,
+        `export * from "dep";`,
+        ``,
+      ].join("\n"),
+      "node_modules/dep/package.json": depManifest("dep"),
+      "node_modules/dep/index.d.ts": `export * from "../../secret/leak.js";\nexport declare const safe: 1;\n`,
+      "node_modules/dep/sub.d.ts": `export declare const viaSubpath: 1;\n`,
+      "secret/leak.d.ts": `export declare const leaked: 1;\n`,
+    },
+    "evil",
+  );
+  assert.deepEqual(records.map((r) => r.name), ["safe"]);
 });

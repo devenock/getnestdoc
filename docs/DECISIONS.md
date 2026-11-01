@@ -382,6 +382,8 @@ Two packages in the official list — `@nestjs/cli` and `@nestjs/mau` — ship o
 
 Building this surfaced a real, separate bug in the extraction engine itself: `@nestjs/bull`'s barrel re-exports from a sibling package (`@nestjs/bull-shared`) by bare specifier, not a relative path. `resolveModuleSpecifier` assumed every specifier was relative and crashed with `ENOENT` trying to read a nonexistent nested path. Fixed by checking the resolved candidate actually exists before returning it — a cross-package specifier now correctly falls through as "don't follow this edge" instead of crashing, which also means this bug was live for any real user with `@nestjs/bull` installed, not just the build script.
 
+*Update 2026-11-01:* "don't follow this edge" turned out to drop real API. Checked against the latest Nest 10, 11, and 12 installs with the TypeScript checker as the oracle, it was the *only* remaining extraction gap: `getQueueToken` and `JOB_REF` (bull, bullmq) and `EventEmitter2` (event-emitter 3.x). Bare re-exports are now followed into the installed dependency, contained within that dependency's own root (ARCHITECTURE.md §5.1).
+
 ### Rationale
 
 `go doc`'s two-tier model — bundled stdlib, on-demand-fetched third party — maps cleanly onto this tool's two-tier data model: bundled guides plus bundled official-package reference (both static, both build-time, both offline) versus live `node_modules` resolution for everything else (dynamic, always version-accurate). Extending "bundle it" to the *entire* npm ecosystem was considered and rejected — unbounded scope, and it would silently break the version-match guarantee for the common case (a project's own installed version) in exchange for covering packages this tool was never trying to cover.
