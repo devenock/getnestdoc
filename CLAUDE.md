@@ -39,6 +39,7 @@ Any change to what extraction produces for the same package version (fields, mer
 - Resolution tested against Nest 10, 11, and 12 fixtures — packaging changed across those majors.
 - Extraction asserts exactly 206 exports for `@nestjs/common@12.0.1`.
 - Benchmark assertions run in CI on every commit.
+- Before a release, and after any change to resolution or extraction: `npm run verify:scope` — every export of the latest three Nest majors against the TypeScript checker, plus a real CLI lookup for each (TESTING.md).
 - Integration tests spawn the binary via `spawnSync`, never a TTY — the pager path (ADR-0008) is exercised only at the pure-decision level (`test/pager.test.ts`), not end-to-end.
 
 ## Style

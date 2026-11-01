@@ -2,10 +2,21 @@
 import { mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
+// --legacy-peer-deps: unrelated ecosystem packages pin each other's majors loosely (terminus vs axios), which strict peer resolution rejects outright.
+const NPM_FLAGS = ["--ignore-scripts", "--no-audit", "--no-fund", "--no-package-lock", "--legacy-peer-deps"];
+
+function npm(args: string[], label: string): void {
+  const result = spawnSync("npm", args, { encoding: "utf8", shell: process.platform === "win32" });
+  if (result.error) throw new Error(`Failed to run npm for ${label}: ${result.error.message}`);
+  if (result.status !== 0) throw new Error(`npm install ${label} exited ${result.status}: ${result.stderr}`);
+}
+
 export function installPackage(name: string, version: string, dir: string): void {
   mkdirSync(dir, { recursive: true });
-  const args = ["install", "--prefix", dir, "--ignore-scripts", "--no-audit", "--no-fund", "--no-package-lock", "--legacy-peer-deps", `${name}@${version}`];
-  const result = spawnSync("npm", args, { encoding: "utf8", shell: process.platform === "win32" });
-  if (result.error) throw new Error(`Failed to run npm for ${name}@${version}: ${result.error.message}`);
-  if (result.status !== 0) throw new Error(`npm install ${name}@${version} exited ${result.status}: ${result.stderr}`);
+  npm(["install", "--prefix", dir, ...NPM_FLAGS, `${name}@${version}`], `${name}@${version}`);
+}
+
+// Installs a directory's own package.json dependencies — a whole project at once.
+export function installProject(dir: string): void {
+  npm(["install", "--prefix", dir, ...NPM_FLAGS], dir);
 }

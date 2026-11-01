@@ -38,7 +38,7 @@ npm run build        # bundles dist/nest-doc.mjs
 npm run bench        # latency budget — see below
 ```
 
-All five need to pass. CI runs the same commands, plus the benchmark at each budget listed in `docs/TESTING.md`.
+All five need to pass. CI runs the same commands, plus the benchmark at each budget listed in `docs/TESTING.md`. If you touched resolution or extraction, also run `npm run verify:scope` (networked, a couple of minutes) and say what it reported.
 
 ## The constraints that shape everything here
 

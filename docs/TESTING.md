@@ -86,3 +86,16 @@ Thresholds live in the `--budget` argument at each call site in CI (`.github/wor
 | `bench -- --budget=150 interceptors` | guide lookup | 150 ms |
 | `bench -- --budget=150 --cwd=test/fixtures common.Injectable` | symbol lookup, cached live `node_modules` | 150 ms |
 | `bench -- --budget=150 --cwd=test/fixtures throttler.Throttle` | symbol lookup, bundled fallback (ADR-0010) | 150 ms |
+
+---
+
+## Scope conformance
+
+`npm run verify:scope` (`scripts/verify-scope.ts`) checks the tool against real installs of the whole official `@nestjs/*` scope, using the TypeScript checker as an independent oracle. For each of the three latest Nest majors (or `--majors=10,11,12`) it installs the newest release of every official package built for that major — chosen by each package's declared `@nestjs/common` peer range — into its own project, then for every entry point (each package root plus every subpath its exports map names) asserts:
+
+1. our entry file is the one `ts.resolveModuleName` (NodeNext) resolves;
+2. our export list equals `checker.getExportsOfModule`, name for name;
+3. every export the checker sees a doc comment on has one in our record;
+4. `nest-doc <entry>` and `nest-doc <entry>.<name>` exit 0 with the right header, for every export.
+
+It's networked and takes a couple of minutes, so it isn't part of `npm test` or CI — run it before a release, and after any change to resolution or extraction. Last run (2026-11-01): Nest 10, 11, 12 — 118 entry points, 4,144 exports, 4,262 CLI lookups, zero differences.
