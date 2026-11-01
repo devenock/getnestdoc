@@ -369,3 +369,25 @@ test("an ambiguous bare name resolves to its owner when exactly one owner is ins
     assert.equal(run(["FileInterceptor"], projectDir).status, 1, "neither installed stays ambiguous");
   });
 });
+
+// On case-insensitive filesystems (macOS, Windows), node_modules/Cron opens the `cron` npm package — so in a real
+// Nest project `nest-doc Cron --api` printed cron@4.4.0's index, `Process` claimed the `process` package "ships no
+// type declarations" (exit 3), and `EventEmitter2`/`LogLevel` hit `eventemitter2`/`loglevel` the same way.
+test("a capitalised symbol name never matches a differently-cased package directory", () => {
+  withScratchProject(
+    {
+      "node_modules/cron/package.json": JSON.stringify({ name: "cron", version: "4.4.0", types: "index.d.ts" }),
+      "node_modules/cron/index.d.ts": "export declare class CronJob {}\n",
+      "node_modules/process/package.json": JSON.stringify({ name: "process", version: "0.11.10", main: "index.js" }),
+    },
+    (projectDir) => {
+      const cron = run(["Cron", "--api"], projectDir);
+      assert.equal(cron.status, 0, cron.stderr);
+      assert.match(cron.stdout, /^@nestjs\/schedule@/m, "Cron is @nestjs/schedule's decorator");
+      const processSymbol = run(["Process", "--api"], projectDir);
+      assert.equal(processSymbol.status, 0, processSymbol.stderr);
+      assert.match(processSymbol.stdout, /^@nestjs\/bull(mq)?@/m);
+      assert.equal(run(["cron"], projectDir).stdout.split("\n")[0], "cron@4.4.0", "the exact lowercase name is still the package");
+    },
+  );
+});

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { FoundPackage, PackageManifest } from "./types.ts";
 
@@ -18,10 +18,24 @@ function normaliseManifest(raw: Record<string, unknown>): PackageManifest {
   return manifest;
 }
 
+// Package names are case-sensitive but macOS and Windows filesystems usually aren't, where node_modules/Cron would open the unrelated `cron` package — so every name segment must exist as exactly that directory entry (not a realpath check, which would reject aliased and symlinked installs).
+function hasExactPath(nodeModulesDir: string, nameParts: string[]): boolean {
+  let dir = nodeModulesDir;
+  for (const part of nameParts) {
+    try {
+      if (!readdirSync(dir).includes(part)) return false;
+    } catch {
+      return false;
+    }
+    dir = join(dir, part);
+  }
+  return true;
+}
+
 function tryLoad(name: string, nameParts: string[], nodeModulesDir: string): FoundPackage | undefined {
   const packageDir = join(nodeModulesDir, ...nameParts);
   const manifestPath = join(packageDir, "package.json");
-  if (!existsSync(manifestPath)) return undefined;
+  if (!existsSync(manifestPath) || !hasExactPath(nodeModulesDir, nameParts)) return undefined;
 
   let raw: unknown;
   try {
