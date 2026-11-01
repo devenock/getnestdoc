@@ -205,3 +205,50 @@ test("Body's five overloads merge into one record: every signature, the first ov
   assert.deepEqual(body!.see.map((l) => l.url), ["https://docs.nestjs.com/controllers#request-object", "https://docs.nestjs.com/custom-decorators#working-with-pipes"]);
   assert.equal(body!.isPublicApi, true);
 });
+
+// Writes a scratch package (path -> contents) and extracts it from index.d.ts, returning the record names.
+async function extractScratch(files: Record<string, string>): Promise<string[]> {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-barrel-shape-test-"));
+  try {
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    return (await extractPackage(join(root, "index.d.ts"), root)).map((s) => s.name).sort();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// `visited` was keyed by file alone, so the second request for the same file — with a different name filter, or a
+// wildcard after a named re-export — returned immediately and silently dropped names.
+test("the same file reached twice with different name filters contributes every requested name", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export { A } from "./b.js";\nexport { B } from "./b.js";\n`,
+      "b.d.ts": `export declare const A: 1;\nexport declare const B: 2;\nexport declare const C: 3;\n`,
+    }),
+    ["A", "B"],
+  );
+});
+
+test("a wildcard re-export after a named one still contributes the file's other exports", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export { A } from "./b.js";\nexport * from "./b.js";\n`,
+      "b.d.ts": `export declare const A: 1;\nexport declare const B: 2;\n`,
+    }),
+    ["A", "B"],
+  );
+});
+
+test("re-export cycles terminate, and a name reachable twice is recorded once", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export * from "./a.js";\nexport * from "./b.js";\n`,
+      "a.d.ts": `export * from "./b.js";\nexport declare const A: 1;\n`,
+      "b.d.ts": `export * from "./a.js";\nexport { A } from "./a.js";\nexport declare const B: 2;\n`,
+    }),
+    ["A", "B"],
+  );
+});

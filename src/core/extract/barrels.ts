@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { isContained } from "../contain.ts";
-import type { DeclarationEntry } from "./parse.ts";
+import type { DeclarationEntry, FileExports } from "./parse.ts";
 import { getFileExports, parseSourceFile } from "./parse.ts";
 import type { JsDocResult } from "./jsdoc.ts";
 import { extractJsDoc } from "./jsdoc.ts";
@@ -81,47 +81,89 @@ function buildSymbolRecord(
   };
 }
 
+// What a visit asks a file for: everything it exports, or specific names — keyed by the name *this file* exports,
+// mapped to the name(s) the record should finally carry (`export { Foo as Bar }` asks for Foo, records Bar).
+type ExportRequest = "all" | Map<string, string[]>;
+
 // Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads.
 // `packageRoot` is the package directory (EntryResolution.packageRoot): no file outside it is ever read, and each
 // record's `file` is relative to it.
 export async function extractPackage(entryFile: string, packageRoot: string): Promise<SymbolRecord[]> {
   const ts = await loadTypeScript();
   if (!isContained(packageRoot, entryFile)) return [];
-  const visited = new Set<string>();
-  const results: SymbolRecord[] = [];
 
-  function visit(filePath: string, allowedNames: Set<string> | "all"): void {
-    if (visited.has(filePath)) return;
-    visited.add(filePath);
+  const parsed = new Map<string, { sourceFile: TS.SourceFile; exports: FileExports }>();
+  const records = new Map<string, SymbolRecord>();
+  // Termination: an "all" visit happens once per file; a named visit once per (file, name, final name) — tracking
+  // the file alone dropped names when the same file was reached twice with different name filters.
+  const visitedAll = new Set<string>();
+  const visitedNames = new Set<string>();
 
-    const sourceFile = parseSourceFile(ts, filePath);
-    const { declarations, forwards } = getFileExports(ts, sourceFile);
+  function load(filePath: string) {
+    let entry = parsed.get(filePath);
+    if (!entry) {
+      const sourceFile = parseSourceFile(ts, filePath);
+      entry = { sourceFile, exports: getFileExports(ts, sourceFile) };
+      parsed.set(filePath, entry);
+    }
+    return entry;
+  }
 
-    for (const [name, entries] of declarations) {
-      if (allowedNames !== "all" && !allowedNames.has(name)) continue;
-      results.push(buildSymbolRecord(ts, name, entries, sourceFile, filePath, packageRoot));
+  function pending(filePath: string, request: ExportRequest): ExportRequest | undefined {
+    if (request === "all") {
+      if (visitedAll.has(filePath)) return undefined;
+      visitedAll.add(filePath);
+      return "all";
+    }
+    const remaining = new Map<string, string[]>();
+    for (const [name, finals] of request) {
+      for (const finalName of finals) {
+        // An earlier "all" visit already produced every name under its own name; only aliases are still owed.
+        if (finalName === name && visitedAll.has(filePath)) continue;
+        const key = `${filePath}\0${name}\0${finalName}`;
+        if (visitedNames.has(key)) continue;
+        visitedNames.add(key);
+        const list = remaining.get(name) ?? [];
+        list.push(finalName);
+        remaining.set(name, list);
+      }
+    }
+    return remaining.size > 0 ? remaining : undefined;
+  }
+
+  function visit(filePath: string, rawRequest: ExportRequest): void {
+    const request = pending(filePath, rawRequest);
+    if (!request) return;
+
+    const { sourceFile, exports } = load(filePath);
+
+    for (const [name, entries] of exports.declarations) {
+      const finals = request === "all" ? [name] : (request.get(name) ?? []);
+      for (const finalName of finals) {
+        // First occurrence wins, so a name reachable through several barrels is recorded once.
+        if (!records.has(finalName)) records.set(finalName, buildSymbolRecord(ts, finalName, entries, sourceFile, filePath, packageRoot));
+      }
     }
 
     const fileDir = dirname(filePath);
-    for (const forward of forwards) {
+    for (const forward of exports.forwards) {
       const targetFile = resolveModuleSpecifier(fileDir, forward.specifier, packageRoot);
       if (!targetFile) continue;
 
       if (forward.kind === "wildcard") {
-        visit(targetFile, allowedNames);
+        visit(targetFile, request);
         continue;
       }
 
-      const relevantSourceNames = forward.names
-        .filter((n) => allowedNames === "all" || allowedNames.has(n.exportedName))
-        .map((n) => n.sourceName);
-
-      if (relevantSourceNames.length > 0) {
-        visit(targetFile, new Set(relevantSourceNames));
+      const subRequest = new Map<string, string[]>();
+      for (const { sourceName, exportedName } of forward.names) {
+        const finals = request === "all" ? [exportedName] : (request.get(exportedName) ?? []);
+        if (finals.length > 0) subRequest.set(sourceName, [sourceName]);
       }
+      if (subRequest.size > 0) visit(targetFile, subRequest);
     }
   }
 
   visit(entryFile, "all");
-  return results;
+  return [...records.values()];
 }
