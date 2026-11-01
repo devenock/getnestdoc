@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,6 +156,43 @@ test("a dotted query that is itself an installed package name still resolves as 
       assert.equal(result.status, 0, `stderr: ${result.stderr}`);
       assert.match(result.stdout, /^socket\.io@2\.0\.0$/m);
       assert.match(result.stdout, /Server/);
+    },
+  );
+});
+
+// Runs the binary with a cache directory the test can inspect afterwards — a written cache entry is proof that a
+// package was extracted.
+function runKeepingCache(args: string[], cwd: string): { status: number | null; stderr: string; cached: string[] } {
+  const cacheHome = mkdtempSync(join(tmpdir(), "getnestdoc-queries-cache-"));
+  try {
+    const result = spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: { ...process.env, XDG_CACHE_HOME: cacheHome } });
+    const cacheDir = join(cacheHome, "getnestdoc");
+    return { status: result.status, stderr: result.stderr, cached: existsSync(cacheDir) ? readdirSync(cacheDir).sort() : [] };
+  } finally {
+    rmSync(cacheHome, { recursive: true, force: true });
+  }
+}
+
+// Every bare-word miss runs the installed-package scan, and it used to cold-extract every installed @nestjs/* package
+// (measured ~460 ms for the five fixtures — a typo blew the 150 ms budget three times over).
+test("a bare-word miss skips installed packages already covered by the bundled index at the same version", () => {
+  const result = runKeepingCache(["Xyzzy"], FIXTURES_ROOT);
+  assert.equal(result.status, 1);
+  // common@12.0.1, core@12.0.1, swagger@12.0.1 match data/packages.json exactly; common-10/common-11 aren't bundled.
+  assert.deepEqual(result.cached, ["@nestjs+common-10@10.4.22.json", "@nestjs+common-11@11.2.3.json"]);
+});
+
+test("a name only an installed newer version exports is still found by the scan", () => {
+  withScratchProject(
+    {
+      "node_modules/@nestjs/common/package.json": JSON.stringify({ name: "@nestjs/common", version: "99.0.0", types: "index.d.ts" }),
+      "node_modules/@nestjs/common/index.d.ts": "/** Added in 99. @publicApi */\nexport declare function BrandNewDecorator(): ClassDecorator;\n",
+    },
+    (projectDir) => {
+      const result = run(["BrandNewDecorator"], projectDir);
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^@nestjs\/common@99\.0\.0$/m);
+      assert.match(result.stdout, /function BrandNewDecorator\(\): ClassDecorator/);
     },
   );
 });

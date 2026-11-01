@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SymbolRecord } from "../core/extract/types.ts";
 import { own } from "../core/own.ts";
+import { findPackageDir } from "../core/resolve/find-package.ts";
+import { loadBundledPackages } from "./bundled-packages.ts";
 import { resolvePackageSymbols, resolvePackageSymbolsOrBundled } from "./symbols.ts";
 
 // The shape of the built bare-symbol-name index: symbol name mapped to the package(s) that export it.
@@ -39,11 +41,18 @@ function listInstalledNestPackages(startDir: string): string[] {
   }
 }
 
-async function scanInstalledPackagesForName(name: string, startDir: string): Promise<BareSymbolResolution> {
+// Every bare-word miss reaches this scan, so a typo used to cold-extract every installed @nestjs/* package (~460 ms
+// for five, against a 150 ms budget). An install at exactly the bundled version is skipped: names.json was built
+// from that version, so it already says the name isn't there. Only versions the index wasn't built from can add names.
+async function scanInstalledPackagesForName(name: string, startDir: string, dataDir: string): Promise<BareSymbolResolution> {
   const candidates = listInstalledNestPackages(startDir);
+  const bundled = loadBundledPackages(dataDir).packages;
   const matches: { packageName: string; packageVersion: string; symbol: SymbolRecord }[] = [];
 
   for (const packageName of candidates) {
+    const installedVersion = findPackageDir(packageName, startDir)?.manifest.version;
+    if (installedVersion !== undefined && own(bundled, packageName)?.packageVersion === installedVersion) continue;
+
     const resolved = await resolvePackageSymbols(packageName, startDir);
     if (resolved.status !== "found") continue;
     const symbol = resolved.result.symbols.find((s) => s.name === name);
@@ -60,7 +69,7 @@ export async function resolveBareSymbol(name: string, dataDir: string, startDir:
   const nameIndex = loadNameIndex(dataDir);
   const owners = own(nameIndex.names, name);
 
-  if (!owners) return scanInstalledPackagesForName(name, startDir);
+  if (!owners) return scanInstalledPackagesForName(name, startDir, dataDir);
   if (owners.length > 1) return { status: "ambiguous", packageNames: owners };
 
   const packageName = owners[0]!;
