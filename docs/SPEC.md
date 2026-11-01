@@ -274,7 +274,7 @@ A scoped package (step 3) or a recognised shorthand (`common`, `throttler`, and 
 
 Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the symbol.
 
-`--guide` restricts to 1–2, `--api` to 3–5. A query matching both prints both headings and asks the user to disambiguate; it never guesses.
+`--guide` restricts to 1–2, `--api` to 3–5. The two are mutually exclusive: passing both is a usage error, exit 2. A bare word matching both a guide and a symbol is *not* ambiguous — the guide wins, per the tie rule above; the only ambiguous case is a bare symbol name exported by several packages (§2b), which lists them and exits 1.
 
 ### Exit codes
 

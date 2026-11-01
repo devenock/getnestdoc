@@ -95,3 +95,12 @@ test("an anchor no heading matches prints the whole guide with a note on stderr,
   assert.match(result.stderr, /No section "#service" in techniques\/configuration; showing the whole guide\./);
   assert.match(result.stdout, /^Configuration\n/);
 });
+
+// Together they skipped every resolution step, so any query — even an exact guide slug — was reported as a miss
+// (exit 1) with a "did you mean" pointing at the very slug typed.
+test("--guide and --api together are a usage error (exit 2), not a false miss", () => {
+  const result = run(["interceptors", "--guide", "--api"]);
+  assert.equal(result.status, 2, `stderr: ${result.stderr}`);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /cannot be used with/);
+});

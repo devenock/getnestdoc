@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import pkg from "../../package.json" with { type: "json" };
 import { resolveRenderOptions } from "../core/render/ansi.ts";
 import { renderTokens } from "../core/render/markdown.ts";
@@ -77,8 +77,9 @@ export function createProgram(dataDir: string): Command {
     .version(pkg.version, "-v, --version", "output the version number")
     .argument("[query]", "guide slug, concept name, package name, package.Symbol, @Decorator, or bare symbol name")
     .option("--js", "show JavaScript code samples instead of TypeScript")
-    .option("--guide", "force guide resolution (steps 1-2 only)")
-    .option("--api", "force package/symbol resolution (steps 3-5 only)")
+    // Mutually exclusive: together they'd skip every resolution step and report a miss for any query.
+    .addOption(new Option("--guide", "force guide resolution (steps 1-2 only)").conflicts("api"))
+    .addOption(new Option("--api", "force package/symbol resolution (steps 3-5 only)").conflicts("guide"))
     .option("--all", "include non-public exports in a package index")
     .option("--clear-cache", "delete the extracted-symbol cache")
     .action(async (query: string | undefined, opts: { js?: boolean; guide?: boolean; api?: boolean; all?: boolean; clearCache?: boolean }) => {
