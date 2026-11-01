@@ -422,3 +422,27 @@ Same-name declarations that aren't all functions (declaration merging, e.g. an i
 - No change to the `SymbolRecord` shape, so the cache, `packages.json`, and every consumer stay compatible. `signature` is multi-line only for overload sets, which SPEC.md §3's "single line where possible" already allows.
 - Per-overload prose beyond the first is not shown. Acceptable: it restates the first overload's description, and the full parameter list is still merged in.
 - Export counts are unchanged (206 for `@nestjs/common`) — overloads were never separate names.
+
+---
+
+## ADR-0012: `slug#anchor` jumps to a guide section
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+Rendered guides print every internal link as a runnable hint — `nest-doc interceptors#binding-interceptors` — and 121 of those hints in the shipped corpus carry an anchor. The lookup had no `#` handling at all, so every one of them was a miss (exit 1). `Heading.tokenIndex` (SPEC.md §1, "for anchor jumps") was stored for exactly this and never read.
+
+Stored anchors follow docs.nestjs.com's own implicit-id rule, verified against upstream `src/app/shared/directives/header-anchor.directive.ts`: `innerText.replace(/\s/g, '-').toLocaleLowerCase()`, no explicit ids in the markdown. That rule keeps punctuation — `Factory providers: useFactory` → `factory-providers:-usefactory` — while the corpus's own links are frequently written without it (`#factory-providers-usefactory`). Measured: of 121 hints, 108 match a heading exactly, 7 more only when punctuation is ignored, and 6 name headings that don't exist in this docs revision at all (e.g. `techniques/configuration#service`).
+
+### Decision
+
+`nest-doc <slug>#<anchor>` resolves the guide as before, then narrows to the section starting at the matching heading and ending at the next heading of the same or shallower depth.
+
+Matching is exact first, then punctuation-insensitive (both sides lowercased, runs of non-alphanumerics collapsed to `-`). An anchor that matches nothing prints the **whole guide** with a one-line note on stderr, exit 0 — the user asked for that guide, and a printed hint should never be a dead end.
+
+### Consequences
+
+- Every printed hint runs: 115 of 121 land on their section, 6 on the whole guide with a note. `test/guides.test.ts` pins those exact numbers, so upstream link churn or a drift in the anchor rule shows up as a test failure.
+- `#` is safe unquoted in POSIX shells mid-word, so the printed form is copy-pasteable as-is.
+- "See also" entries on symbols still print without anchors, matching SPEC.md §4.1.

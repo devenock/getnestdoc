@@ -70,3 +70,28 @@ test("wrongly-typed package.json fields are ignored rather than crashing resolut
     },
   );
 });
+
+// Rendered guides print internal links as `nest-doc <slug>#<anchor>` (121 of them in the shipped corpus), but the
+// lookup had no `#` handling, so every one of those printed commands was a miss.
+test("nest-doc <slug>#<anchor> prints just that section, up to the next heading of the same depth", () => {
+  const result = run(["interceptors#binding-interceptors"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^Binding interceptors\n/);
+  assert.match(result.stdout, /UseInterceptors/);
+  assert.doesNotMatch(result.stdout, /^Basics$/m, "content before the section leaked in");
+  assert.doesNotMatch(result.stdout, /^Response mapping$/m, "the next same-depth section leaked in");
+});
+
+test("an anchor written without the heading's punctuation still finds the section", () => {
+  const result = run(["fundamentals/dependency-injection#factory-providers-usefactory"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.match(result.stdout, /^Factory providers: useFactory\n/);
+});
+
+test("an anchor no heading matches prints the whole guide with a note on stderr, never a miss", () => {
+  const result = run(["techniques/configuration#service"]);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /No section "#service" in techniques\/configuration; showing the whole guide\./);
+  assert.match(result.stdout, /^Configuration\n/);
+});

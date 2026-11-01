@@ -237,6 +237,7 @@ Exit 1. Suggestions to stderr, so piping stays clean.
 
 ```
 nest-doc <query>              lookup, auto-detected
+nest-doc <guide>#<anchor>     one section of a guide (ADR-0012)
 nest-doc @Get                 decorator lookup
 nest-doc Get                  bare symbol lookup
 nest-doc <query> --guide      force guide

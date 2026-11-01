@@ -51,6 +51,7 @@ Guides resolve by concept, the way you actually think about Nest:
 $ nest-doc guards
 $ nest-doc custom-decorators
 $ nest-doc providers            # the docs call this file components.md; we handle that
+$ nest-doc interceptors#binding-interceptors   # just one section
 ```
 
 Symbols resolve against **your** `node_modules`, so you get the version you actually have installed:

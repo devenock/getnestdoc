@@ -5,7 +5,7 @@ import { renderTokens } from "../core/render/markdown.ts";
 import { suggest } from "../core/fuzzy.ts";
 import { writeOutput } from "../core/pager.ts";
 import { loadAliases } from "../nest/aliases.ts";
-import { findGuide, loadGuides } from "../nest/guides/index.ts";
+import { findGuideSection, loadGuides } from "../nest/guides/index.ts";
 import { resolvePackageSymbolsOrBundled } from "../nest/symbols.ts";
 import { loadNameIndex, resolveBareSymbol } from "../nest/names.ts";
 import { getCacheDir } from "../core/cache/paths.ts";
@@ -99,10 +99,13 @@ export function createProgram(dataDir: string): Command {
       const renderOptions = resolveRenderOptions();
 
       if (!opts.api) {
-        const guide = findGuide(query, guidesFile, aliasFile);
-        if (guide) {
+        const lookup = findGuideSection(query, guidesFile, aliasFile);
+        if (lookup) {
+          if (lookup.missingAnchor !== undefined) {
+            process.stderr.write(`No section "#${lookup.missingAnchor}" in ${lookup.guide.slug}; showing the whole guide.\n`);
+          }
           const guideRenderOptions = { ...renderOptions, js: opts.js === true };
-          await writeOutput(renderTokens(guide.tokens, guideRenderOptions));
+          await writeOutput(renderTokens(lookup.tokens, guideRenderOptions));
           return;
         }
       }
