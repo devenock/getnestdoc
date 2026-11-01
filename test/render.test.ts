@@ -96,3 +96,26 @@ test("a real table with a codespan cell renders with consistent column alignment
   const hasCyan = lines.some((l) => l.includes("\x1b[36m"));
   assert.ok(hasCyan, `${foundSlug}: expected the codespan cell to render in cyan`);
 });
+
+// ARCHITECTURE.md §10: "Terminal width unavailable — default to 80". A TTY reporting no columns got 100 instead.
+test("render width: 80 when a terminal reports no width, otherwise columns clamped to [40, 100]; 80 when piped", async () => {
+  const { resolveRenderOptions } = await import("../src/core/render/ansi.ts");
+  const stdout = process.stdout as { isTTY?: boolean | undefined; columns?: number | undefined };
+  const saved = { isTTY: stdout.isTTY, columns: stdout.columns };
+  try {
+    const widthFor = (isTTY: boolean, columns: number | undefined) => {
+      stdout.isTTY = isTTY;
+      stdout.columns = columns;
+      return resolveRenderOptions().width;
+    };
+    assert.equal(widthFor(true, undefined), 80);
+    assert.equal(widthFor(true, 0), 80);
+    assert.equal(widthFor(true, 200), 100);
+    assert.equal(widthFor(true, 30), 40);
+    assert.equal(widthFor(true, 72), 72);
+    assert.equal(widthFor(false, 200), 80);
+  } finally {
+    stdout.isTTY = saved.isTTY;
+    stdout.columns = saved.columns;
+  }
+});
