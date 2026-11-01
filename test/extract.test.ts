@@ -185,3 +185,23 @@ test("a dist/ entry may re-export from elsewhere inside its own package, but nev
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// Overloads were keyed by name in a Map, so only the *last* declaration survived: `nest-doc common.Body` showed one
+// of Body's five signatures and only that overload's JSDoc. ADR-0011: overloads merge into one record.
+test("Body's five overloads merge into one record: every signature, the first overload's doc, every @param", () => {
+  const body = symbols.find((s) => s.name === "Body");
+  assert.ok(body, "Body not found");
+  assert.equal(body!.kind, "function");
+  const overloads = body!.signature.split("\n");
+  assert.equal(overloads.length, 5);
+  assert.equal(overloads[0], "export declare function Body(): ParameterDecorator;");
+  assert.equal(overloads[4], "export declare function Body(property: string, options: ParameterDecoratorOptions): ParameterDecorator;");
+  assert.match(body!.doc, /^Route handler parameter decorator\. Extracts the entire `body`\nobject from the `req` object/);
+  assert.deepEqual(
+    body!.tags.filter((t) => t.name === "param").map((t) => t.text.split(" ")[0]),
+    ["pipes", "options", "property"],
+    "each parameter appears once across overloads",
+  );
+  assert.deepEqual(body!.see.map((l) => l.url), ["https://docs.nestjs.com/controllers#request-object", "https://docs.nestjs.com/custom-decorators#working-with-pipes"]);
+  assert.equal(body!.isPublicApi, true);
+});

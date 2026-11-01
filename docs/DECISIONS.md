@@ -390,3 +390,35 @@ Building this surfaced a real, separate bug in the extraction engine itself: `@n
 - Bundled data is pinned to whatever was live on npm at the time `build-packages.ts` last ran — the same relationship Go has between your installed toolchain version and the stdlib docs it shows you. Refreshed on `getnestdoc` releases, not on every `nest-doc update` (which stays guide-only, per its own contract of being the only networked command run by users).
 - `scripts/build-names.ts` is deleted; `build:names` in `package.json` is now `build:packages`.
 - Six new integration tests in `test/phase8.test.ts` cover: bundled fallback for a scoped-package query, the bare shorthand form, a newly-added package (`mapped-types`), the `package.symbol` form, the bare-symbol-name form, and the case where no bundled data exists at all (`@nestjs/cli`) — confirming the plain not-installed message still shows correctly rather than silently claiming coverage that doesn't exist.
+
+---
+
+## ADR-0011: Function overloads merge into one `SymbolRecord`
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+Extraction keyed declarations by name in a `Map`, so for an overloaded function only the last declaration survived. Measured on `@nestjs/common@12.0.1`: 8 exports are overloaded — `Body`, `Param`, and `Query` (5 overloads each), `RawBody`, `UploadedFile`, `Controller` (3), `UploadedFiles`, `HostParam` (2). These are among the most-queried decorators in the framework, and `nest-doc common.Body` showed one of five signatures, with only that overload's JSDoc and `@param` list.
+
+Each overload carries its own JSDoc block. SPEC.md §3 fixes one `SymbolRecord` per exported name, and `names.json`, the cache, and the package index all assume that.
+
+### Decision
+
+Same-name function declarations in one file merge into one record:
+
+- `signature` — every overload's declaration text, in source order, one per line (`\n`-joined).
+- `doc` — the first overload that has prose. Nest writes the general description on the first overload; later ones restate it with a variant.
+- `tags` — the union across overloads; `@param` deduplicated by parameter name (first description wins), other tags by exact text.
+- `see` — the union, deduplicated by URL.
+- `isPublicApi` — true if any overload is tagged.
+
+`renderSymbol` prints one signature line per overload; a wrapped continuation hangs by four columns so overloads stay visually distinct.
+
+Same-name declarations that aren't all functions (declaration merging, e.g. an interface and a const) keep the previous behaviour — the last declaration wins.
+
+### Consequences
+
+- No change to the `SymbolRecord` shape, so the cache, `packages.json`, and every consumer stay compatible. `signature` is multi-line only for overload sets, which SPEC.md §3's "single line where possible" already allows.
+- Per-overload prose beyond the first is not shown. Acceptable: it restates the first overload's description, and the full parameter list is still merged in.
+- Export counts are unchanged (206 for `@nestjs/common`) — overloads were never separate names.

@@ -151,7 +151,7 @@ type CacheFile = {
 type SymbolRecord = {
   name: string;
   kind: "function" | "class" | "interface" | "type" | "enum" | "const" | "variable";
-  signature: string;     // declaration text, JSDoc lines stripped, single line where possible
+  signature: string;     // declaration text, JSDoc lines stripped, single line where possible; one line per overload (ADR-0011)
   doc: string;           // JSDoc body, markdown, no tags
   tags: { name: string; text: string }[];
   see: { text: string; url: string }[];

@@ -54,9 +54,14 @@ export function renderSymbol(
 ): string {
   const lines: string[] = [`${packageName}@${packageVersion}`, ""];
 
-  const displaySignature = symbol.signature.replace(/^export\s+/, "").replace(/^declare\s+/, "").replace(/;$/, "");
-  // Unindented sets the left margin, not a promise it fits on one line — a large enum or interface member list routinely doesn't.
-  lines.push(...wrapText(displaySignature, Math.max(1, options.width)), "");
+  // One line per overload (ADR-0011). Unindented sets the left margin, not a promise each fits on one line — a large
+  // enum or interface member list routinely doesn't, so wrapped continuations hang by four to keep overloads distinct.
+  for (const overload of symbol.signature.split("\n")) {
+    const displaySignature = overload.replace(/^export\s+/, "").replace(/^declare\s+/, "").replace(/;$/, "");
+    const wrapped = wrapText(displaySignature, Math.max(1, options.width - 4));
+    lines.push(wrapped[0]!, ...wrapped.slice(1).map((line) => `    ${line}`));
+  }
+  lines.push("");
 
   if (symbol.doc) {
     for (const wrapped of wrapText(plainText(symbol.doc), Math.max(1, options.width - 4))) {

@@ -2,7 +2,8 @@ import { existsSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { isContained } from "../contain.ts";
 import type { DeclarationEntry } from "./parse.ts";
-import { getExportedDeclarations, getExportStatements, parseSourceFile } from "./parse.ts";
+import { getFileExports, parseSourceFile } from "./parse.ts";
+import type { JsDocResult } from "./jsdoc.ts";
 import { extractJsDoc } from "./jsdoc.ts";
 import { extractSignature } from "./signature.ts";
 import { sanitizeExtractedText } from "./sanitize.ts";
@@ -25,20 +26,51 @@ function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot:
   return isContained(packageRoot, resolved) ? resolved : undefined;
 }
 
+// Function overloads become one record (ADR-0011): one signature line per overload, the first documented overload's
+// prose, and the union of every overload's tags (@param deduplicated by parameter name) and @see links.
+function mergeOverloadDocs(docs: JsDocResult[]): JsDocResult {
+  const primary = docs.find((d) => d.doc.length > 0) ?? docs[0]!;
+  const tags: JsDocResult["tags"] = [];
+  const tagKeys = new Set<string>();
+  const see: JsDocResult["see"] = [];
+  const seeUrls = new Set<string>();
+
+  for (const result of docs) {
+    for (const tag of result.tags) {
+      const key = tag.name === "param" ? `param\0${tag.text.split(" ")[0]}` : `${tag.name}\0${tag.text}`;
+      if (tagKeys.has(key)) continue;
+      tagKeys.add(key);
+      tags.push(tag);
+    }
+    for (const link of result.see) {
+      if (seeUrls.has(link.url)) continue;
+      seeUrls.add(link.url);
+      see.push(link);
+    }
+  }
+
+  return { doc: primary.doc, tags, see, isPublicApi: docs.some((d) => d.isPublicApi) };
+}
+
 function buildSymbolRecord(
   ts: typeof TS,
-  entry: DeclarationEntry,
+  name: string,
+  entries: DeclarationEntry[],
   sourceFile: TS.SourceFile,
   filePath: string,
   packageRoot: string,
 ): SymbolRecord {
-  const { doc, tags, see, isPublicApi } = extractJsDoc(ts, entry.node);
-  const signature = extractSignature(entry.node, sourceFile);
-  const { line } = sourceFile.getLineAndCharacterOfPosition(entry.node.getStart(sourceFile));
+  // Same-name declarations that aren't all function overloads (declaration merging) keep the last one, as before.
+  const isOverloadSet = entries.length > 1 && entries.every((e) => e.kind === "function");
+  const used = isOverloadSet ? entries : [entries[entries.length - 1]!];
+
+  const { doc, tags, see, isPublicApi } = isOverloadSet ? mergeOverloadDocs(used.map((e) => extractJsDoc(ts, e.node))) : extractJsDoc(ts, used[0]!.node);
+  const signature = used.map((e) => extractSignature(e.node, sourceFile)).join("\n");
+  const { line } = sourceFile.getLineAndCharacterOfPosition(used[0]!.node.getStart(sourceFile));
 
   return {
-    name: entry.name,
-    kind: entry.kind,
+    name,
+    kind: used[0]!.kind,
     signature: sanitizeExtractedText(signature),
     doc: sanitizeExtractedText(doc),
     tags: tags.map((tag) => ({ name: tag.name, text: sanitizeExtractedText(tag.text) })),
@@ -63,24 +95,24 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
     visited.add(filePath);
 
     const sourceFile = parseSourceFile(ts, filePath);
-    const declarations = getExportedDeclarations(ts, sourceFile);
+    const { declarations, forwards } = getFileExports(ts, sourceFile);
 
-    for (const [name, entry] of declarations) {
+    for (const [name, entries] of declarations) {
       if (allowedNames !== "all" && !allowedNames.has(name)) continue;
-      results.push(buildSymbolRecord(ts, entry, sourceFile, filePath, packageRoot));
+      results.push(buildSymbolRecord(ts, name, entries, sourceFile, filePath, packageRoot));
     }
 
     const fileDir = dirname(filePath);
-    for (const exportStatement of getExportStatements(ts, sourceFile)) {
-      const targetFile = resolveModuleSpecifier(fileDir, exportStatement.specifier, packageRoot);
+    for (const forward of forwards) {
+      const targetFile = resolveModuleSpecifier(fileDir, forward.specifier, packageRoot);
       if (!targetFile) continue;
 
-      if (exportStatement.kind === "wildcard") {
+      if (forward.kind === "wildcard") {
         visit(targetFile, allowedNames);
         continue;
       }
 
-      const relevantSourceNames = exportStatement.names
+      const relevantSourceNames = forward.names
         .filter((n) => allowedNames === "all" || allowedNames.has(n.exportedName))
         .map((n) => n.sourceName);
 

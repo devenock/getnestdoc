@@ -93,3 +93,13 @@ test("an undocumented symbol's detail view shows the fallback line, never a blan
   const output = renderSymbol("@nestjs/swagger", version, apiProperty, guidesFile, aliasFile, { width: 100, color: false });
   assert.match(output, /No documentation available/);
 });
+
+test("an overloaded symbol renders one signature per overload, continuations indented so overloads stay distinct", async () => {
+  const { symbols, version } = await extract("@nestjs/common");
+  const body = symbols.find((s) => s.name === "Body")!;
+  const output = renderSymbol("@nestjs/common", version, body, guidesFile, aliasFile, { width: 80, color: false });
+  const signatureLines = output.split("\n").filter((line) => line.startsWith("function Body("));
+  assert.equal(signatureLines.length, 5);
+  assert.ok(output.includes("function Body(): ParameterDecorator\n"));
+  for (const line of output.split("\n")) assert.ok(line.length <= 80, `line exceeds width: ${line}`);
+});

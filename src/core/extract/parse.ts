@@ -14,68 +14,68 @@ export type DeclarationEntry = {
   node: TS.Node;
 };
 
+// A re-export the barrel walker follows. `names` maps the name in the target module to the name this file exports it as.
+export type ExportForward =
+  | { kind: "wildcard"; specifier: string }
+  | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };
+
+// Everything one file exports: declarations it owns (keyed by exported name — several entries means overloads or
+// declaration merging), and re-exports to follow.
+export type FileExports = {
+  declarations: Map<string, DeclarationEntry[]>;
+  forwards: ExportForward[];
+};
+
 function isExported(ts: typeof TS, node: TS.Node): boolean {
   return (ts.getCombinedModifierFlags(node as TS.Declaration) & ts.ModifierFlags.Export) !== 0;
 }
 
-// Collects named, exported top-level declarations in one file — the raw material a barrel walk filters down to what it actually re-exports.
-export function getExportedDeclarations(ts: typeof TS, sourceFile: TS.SourceFile): Map<string, DeclarationEntry> {
-  const declarations = new Map<string, DeclarationEntry>();
-
-  for (const statement of sourceFile.statements) {
-    if (!isExported(ts, statement)) continue;
-
-    if (ts.isFunctionDeclaration(statement) && statement.name) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "function", node: statement });
-    } else if (ts.isClassDeclaration(statement) && statement.name) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "class", node: statement });
-    } else if (ts.isInterfaceDeclaration(statement)) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "interface", node: statement });
-    } else if (ts.isTypeAliasDeclaration(statement)) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "type", node: statement });
-    } else if (ts.isEnumDeclaration(statement)) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "enum", node: statement });
-    } else if (ts.isVariableStatement(statement)) {
-      const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;
-      for (const decl of statement.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          declarations.set(decl.name.text, {
-            name: decl.name.text,
-            kind: isConst ? "const" : "variable",
-            node: statement,
-          });
-        }
-      }
-    }
+// Named top-level declarations in one statement (a variable statement can declare several).
+function declarationsIn(ts: typeof TS, statement: TS.Statement): DeclarationEntry[] {
+  if (ts.isFunctionDeclaration(statement) && statement.name) return [{ name: statement.name.text, kind: "function", node: statement }];
+  if (ts.isClassDeclaration(statement) && statement.name) return [{ name: statement.name.text, kind: "class", node: statement }];
+  if (ts.isInterfaceDeclaration(statement)) return [{ name: statement.name.text, kind: "interface", node: statement }];
+  if (ts.isTypeAliasDeclaration(statement)) return [{ name: statement.name.text, kind: "type", node: statement }];
+  if (ts.isEnumDeclaration(statement)) return [{ name: statement.name.text, kind: "enum", node: statement }];
+  if (ts.isVariableStatement(statement)) {
+    const kind = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0 ? "const" : "variable";
+    return statement.declarationList.declarations
+      .filter((decl) => ts.isIdentifier(decl.name))
+      .map((decl) => ({ name: (decl.name as TS.Identifier).text, kind, node: statement }));
   }
-
-  return declarations;
+  return [];
 }
 
-// A wildcard or named re-export the barrel walker follows; excludes bare `export {};`, which has no module specifier.
-export type ExportStatement =
-  | { kind: "wildcard"; specifier: string }
-  | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };
+// Appends unless already present — `export declare class A {}` followed by a redundant `export { A }` is one declaration.
+function addTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const list = map.get(key);
+  if (!list) map.set(key, [value]);
+  else if (!list.includes(value)) list.push(value);
+}
 
-export function getExportStatements(ts: typeof TS, sourceFile: TS.SourceFile): ExportStatement[] {
-  const statements: ExportStatement[] = [];
+// Builds a file's export table: declarations it owns, plus `export * from` / `export { A } from` re-exports.
+export function getFileExports(ts: typeof TS, sourceFile: TS.SourceFile): FileExports {
+  const declarations = new Map<string, DeclarationEntry[]>();
+  const forwards: ExportForward[] = [];
+
+  for (const statement of sourceFile.statements) {
+    if (isExported(ts, statement)) {
+      for (const entry of declarationsIn(ts, statement)) addTo(declarations, entry.name, entry);
+    }
+  }
 
   for (const statement of sourceFile.statements) {
     if (!ts.isExportDeclaration(statement)) continue;
     if (!statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-
     const specifier = statement.moduleSpecifier.text;
 
     if (!statement.exportClause) {
-      statements.push({ kind: "wildcard", specifier });
+      forwards.push({ kind: "wildcard", specifier });
     } else if (ts.isNamedExports(statement.exportClause)) {
-      const names = statement.exportClause.elements.map((el) => ({
-        sourceName: (el.propertyName ?? el.name).text,
-        exportedName: el.name.text,
-      }));
-      if (names.length > 0) statements.push({ kind: "named", specifier, names });
+      const names = statement.exportClause.elements.map((el) => ({ sourceName: (el.propertyName ?? el.name).text, exportedName: el.name.text }));
+      if (names.length > 0) forwards.push({ kind: "named", specifier, names });
     }
   }
 
-  return statements;
+  return { declarations, forwards };
 }
