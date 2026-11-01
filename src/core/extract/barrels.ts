@@ -109,7 +109,8 @@ function buildSymbolRecord(
 }
 
 // What a visit asks a file for: everything, or specific names keyed by the name that file exports, mapped to the name(s) the record finally carries (`export { Foo as Bar }` asks for Foo, records Bar).
-type ExportRequest = "all" | Map<string, string[]>;
+// "star" is what `export * from` asks for: everything except `default`, which a wildcard re-export never carries.
+type ExportRequest = "all" | "star" | Map<string, string[]>;
 
 // Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads. `packageRoot` bounds every file read from the package itself, and each record's `file` is relative to it (prefixed with the dependency's name for a symbol re-exported from one).
 export async function extractPackage(entryFile: string, packageRoot: string): Promise<SymbolRecord[]> {
@@ -120,6 +121,7 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
   const records = new Map<string, SymbolRecord>();
   // An "all" visit runs once per file, a named visit once per (file, name, final name) — per-file tracking alone drops names when a file is reached twice with different filters.
   const visitedAll = new Set<string>();
+  const visitedStar = new Set<string>();
   const visitedNames = new Set<string>();
 
   function load(filePath: string) {
@@ -138,11 +140,16 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
       visitedAll.add(filePath);
       return "all";
     }
+    if (request === "star") {
+      if (visitedAll.has(filePath) || visitedStar.has(filePath)) return undefined;
+      visitedStar.add(filePath);
+      return "star";
+    }
     const remaining = new Map<string, string[]>();
     for (const [name, finals] of request) {
       for (const finalName of finals) {
-        // An earlier "all" visit already produced every name under its own name; only aliases are still owed.
-        if (finalName === name && visitedAll.has(filePath)) continue;
+        // An earlier "all"/"star" visit already produced the name under its own name; only aliases are still owed.
+        if (finalName === name && (visitedAll.has(filePath) || (name !== "default" && visitedStar.has(filePath)))) continue;
         const key = `${filePath}\0${name}\0${finalName}`;
         if (visitedNames.has(key)) continue;
         visitedNames.add(key);
@@ -160,8 +167,11 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
 
     const { sourceFile, exports } = load(filePath);
 
+    // The names this file is asked to export, mapped to the names they're recorded under.
+    const finalsFor = (name: string): string[] => (request === "all" ? [name] : request === "star" ? (name === "default" ? [] : [name]) : (request.get(name) ?? []));
+
     for (const [name, entries] of exports.declarations) {
-      const finals = request === "all" ? [name] : (request.get(name) ?? []);
+      const finals = finalsFor(name);
       for (const finalName of finals) {
         // First occurrence wins, so a name reachable through several barrels is recorded once.
         if (!records.has(finalName)) records.set(finalName, buildSymbolRecord(ts, finalName, entries, sourceFile, filePath, scope));
@@ -174,13 +184,14 @@ export async function extractPackage(entryFile: string, packageRoot: string): Pr
       if (!target) continue;
 
       if (forward.kind === "wildcard") {
-        visit(target.file, request, target.scope);
+        const starRequest = request === "all" || request === "star" ? "star" : new Map([...request].filter(([name]) => name !== "default"));
+        if (starRequest === "star" || starRequest.size > 0) visit(target.file, starRequest, target.scope);
         continue;
       }
 
       const subRequest = new Map<string, string[]>();
       for (const { sourceName, exportedName } of forward.names) {
-        const finals = request === "all" ? [exportedName] : (request.get(exportedName) ?? []);
+        const finals = finalsFor(exportedName);
         if (finals.length > 0) subRequest.set(sourceName, [...(subRequest.get(sourceName) ?? []), ...finals]);
       }
       if (subRequest.size > 0) visit(target.file, subRequest, target.scope);

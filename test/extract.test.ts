@@ -383,3 +383,16 @@ test("bare specifiers can't be used to escape: traversal, subpaths, node: builti
   );
   assert.deepEqual(records.map((r) => r.name), ["safe"]);
 });
+
+// @nestjs/swagger@12's "./plugin" entry point ends in `declare const _default: …; export default _default;` — the
+// TypeScript checker lists `default` among its exports, the walk didn't. `export *` must still never carry a default.
+test("default exports are recorded as `default`, and `export *` never re-exports one", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export * from "./a.js";\nexport { default as Named } from "./b.js";\ndeclare const _default: () => void;\nexport default _default;\n`,
+      "a.d.ts": `export declare const fromA: 1;\nexport default class HiddenByStar {}\n`,
+      "b.d.ts": `export default function namedTarget(): void;\n`,
+    }),
+    ["default", "fromA", "Named"].sort(),
+  );
+});

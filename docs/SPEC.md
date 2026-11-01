@@ -140,7 +140,7 @@ Path: `${XDG_CACHE_HOME:-~/.cache}/getnestdoc/<name>@<version>.json`, with `/` i
 
 ```ts
 type CacheFile = {
-  version: 3;            // bump invalidates every entry — bumped whenever extraction output changes
+  version: 4;            // bump invalidates every entry — bumped whenever extraction output changes
   package: string;
   packageVersion: string;
   entryFile: string;     // absolute path extraction started from

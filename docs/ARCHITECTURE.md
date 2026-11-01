@@ -220,7 +220,10 @@ Three more shapes appear in real declaration files and are handled the same way:
 export { Foo as Bar } from './a.js';     // aliased  → recorded as Bar, not Foo
 declare class A {}  export { A as B };   // local export list (rollup/tsup-bundled .d.ts, @nestjs/jwt)
 import { C } from './c.js'; export { C }; // imported binding re-exported → followed into ./c
+declare const _d: X; export default _d;   // default export → recorded as `default` (@nestjs/swagger/plugin@12)
 ```
+
+`export *` never carries a `default` export, as in ES modules — a wildcard visit asks for everything except `default`.
 
 Termination: an "export everything" visit runs once per file; a filtered visit once per (file, name, final name). Tracking files alone drops names when one file is reached twice with different filters. Each file is parsed once per extraction, and a name reachable through several barrels is recorded once (first wins).
 

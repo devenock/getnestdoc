@@ -60,9 +60,11 @@ export function getFileExports(ts: typeof TS, sourceFile: TS.SourceFile): FileEx
   const forwards: ExportForward[] = [];
 
   for (const statement of sourceFile.statements) {
+    // `export default class Foo` exports the name "default", not "Foo".
+    const isDefault = (ts.getCombinedModifierFlags(statement as TS.Node as TS.Declaration) & ts.ModifierFlags.Default) !== 0;
     for (const entry of declarationsIn(ts, statement)) {
       addTo(local, entry.name, entry);
-      if (isExported(ts, statement)) addTo(declarations, entry.name, entry);
+      if (isExported(ts, statement)) addTo(declarations, isDefault ? "default" : entry.name, entry);
     }
 
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
@@ -76,6 +78,16 @@ export function getFileExports(ts: typeof TS, sourceFile: TS.SourceFile): FileEx
   }
 
   for (const statement of sourceFile.statements) {
+    // `export default x;` (not CommonJS `export =`): a local declaration, an imported binding to follow, or an expression documented as written.
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      const target = ts.isIdentifier(statement.expression) ? statement.expression.text : undefined;
+      const entries = target === undefined ? undefined : local.get(target);
+      const imported = target === undefined ? undefined : imports.get(target);
+      if (entries) for (const entry of entries) addTo(declarations, "default", entry);
+      else if (imported) forwards.push({ kind: "named", specifier: imported.specifier, names: [{ sourceName: imported.importedName, exportedName: "default" }] });
+      else addTo(declarations, "default", { name: "default", kind: "const", node: statement });
+      continue;
+    }
     if (!ts.isExportDeclaration(statement)) continue;
     const specifier = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : undefined;
 
