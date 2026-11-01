@@ -114,7 +114,7 @@ and file since this was written; not a routing-parser bug.
 
 ## 2b. `data/names.json` and `data/packages.json`
 
-Both produced by `scripts/build-packages.ts` (ADR-0007, ADR-0010) in one extraction pass over the full official `@nestjs/*` scope — every name in `package-scope.ts`'s shorthand table except `cli` and `mau`, which ship no extractable types.
+Both produced by `scripts/build-packages.ts` (ADR-0007, ADR-0010) in one extraction pass over the full official `@nestjs/*` scope — every name in `package-scope.ts`'s shorthand table except `cli` and `mau`, which ship no extractable types. Each package is installed with its dependencies (so re-exports from them resolve), and each named subpath entry point is bundled as its own entry keyed by full specifier (`@nestjs/common/internal`, ADR-0014). In `names.json` a subpath entry owns a name only when no package root exports it.
 
 ```ts
 type NameIndex = {

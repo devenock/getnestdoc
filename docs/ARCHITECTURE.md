@@ -265,7 +265,7 @@ Measured: 150 KB for 220 symbols, 0.5 ms to read and parse. A cold `nest-doc com
 
 ### 6.1 Build time
 
-Run by hand before a release — `npm run build:guides`, then `npm run build:aliases` (which also rewrites internal links in `guides.json`), and `npm run build:packages` for the bundled symbol data (`--pin` re-extracts the already-bundled versions after an extractor change). No CI workflow runs these today; staleness is bounded by how often someone does. Never at install time, never at runtime — `nest-doc update` runs the same guide pipeline on demand, into the user's data directory (ADR-0013).
+Run by hand before a release — `npm run build:guides`, then `npm run build:aliases` (which also rewrites internal links in `guides.json`), and `npm run build:packages` for the bundled symbol data — each package `npm install`ed with its dependencies into its own directory, named subpath entry points included (`--pin` re-extracts the already-bundled versions after an extractor change). No CI workflow runs these today; staleness is bounded by how often someone does. Never at install time, never at runtime — `nest-doc update` runs the same guide pipeline on demand, into the user's data directory (ADR-0013).
 
 ```
 codeload.github.com/nestjs/docs.nestjs.com/tar.gz/master
