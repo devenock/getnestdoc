@@ -144,7 +144,7 @@ The `common.X` shorthand expands `common` → `@nestjs/common` via a static tabl
 
 ### 4.2 Finding the package
 
-Walk up from `cwd` looking for `node_modules/<name>`. Stop at filesystem root or a `.git` boundary, whichever comes first; if that fails, try the global npm root (derived from `process.execPath`, no `npm root -g` subprocess — that would cost 100ms+ on a path that has to stay fast). If a package genuinely isn't installed anywhere and it's part of the official `@nestjs/*` scope, `resolvePackageSymbolsOrBundled` (ADR-0010) falls back to `data/packages.json` before giving up — still fully offline, no registry fetch, because that would break the offline guarantee. A live install always wins over bundled data when both exist.
+Walk up from `cwd` looking for `node_modules/<name>`. Stop at filesystem root or a `.git` boundary, whichever comes first; if that fails, try the global npm roots: first the `node_modules` directory `nest-doc` itself is installed in (the real path of `argv[1]` — for any npm-prefix global install that *is* the global root, including Homebrew, whose `process.execPath` resolves into its Cellar instead), then the one derived from `process.execPath`. No `npm root -g` subprocess — that would cost 100ms+ on a path that has to stay fast. If a package genuinely isn't installed anywhere and it's part of the official `@nestjs/*` scope, `resolvePackageSymbolsOrBundled` (ADR-0010) falls back to `data/packages.json` before giving up — still fully offline, no registry fetch, because that would break the offline guarantee. A live install always wins over bundled data when both exist.
 
 ### 4.3 Finding the entry declaration file
 

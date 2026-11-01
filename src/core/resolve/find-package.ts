@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import type { FoundPackage, PackageManifest } from "./types.ts";
 
 function stringField(raw: Record<string, unknown>, key: string): string | undefined {
@@ -37,16 +37,39 @@ function tryLoad(name: string, nameParts: string[], nodeModulesDir: string): Fou
   return { name, packageDir, nodeModulesDir, manifest: normaliseManifest(raw as Record<string, unknown>) };
 }
 
-// Standard-layout global npm root (nvm, the official installer, Homebrew's Node all follow this) derived from
-// process.execPath directly — no `npm root -g` subprocess, which would cost 100ms+ on a path that has to stay fast.
-// A custom `npm config set prefix` won't be found this way; that's an accepted gap, not a crash risk (existsSync-gated).
-function globalNodeModulesDir(): string {
+// The node_modules directory the running program itself is installed in, if any. For a global install this *is* the
+// global root, whatever the prefix: `<prefix>/bin/nest-doc` is a symlink into `<prefix>/lib/node_modules/getnestdoc/`,
+// and argv[1]'s real path walks up to it. This is the case process.execPath can't see — Homebrew's execPath resolves
+// into its Cellar (`.../Cellar/node/<v>/bin/node`, verified), not the prefix whose lib/node_modules holds the globals.
+function ownNodeModulesDir(): string | undefined {
+  const script = process.argv[1];
+  if (!script) return undefined;
+  let dir: string;
+  try {
+    dir = dirname(realpathSync(script));
+  } catch {
+    return undefined;
+  }
+  while (basename(dir) !== "node_modules") {
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return dir;
+}
+
+// Global npm roots to try after the upward walk, cheapest signal first, no `npm root -g` subprocess (100ms+ on a path
+// that has to stay fast). The execPath-derived root covers the official installer and nvm layouts. A global package
+// installed somewhere neither points at (e.g. Volta, which isolates each global package) is an accepted gap.
+function globalNodeModulesDirs(): string[] {
   const nodeDir = dirname(process.execPath);
-  return process.platform === "win32" ? join(nodeDir, "node_modules") : join(dirname(nodeDir), "lib", "node_modules");
+  const fromExecPath = process.platform === "win32" ? join(nodeDir, "node_modules") : join(dirname(nodeDir), "lib", "node_modules");
+  const own = ownNodeModulesDir();
+  return own && own !== fromExecPath ? [own, fromExecPath] : [fromExecPath];
 }
 
 // Walks up from `startDir` looking for `node_modules/<name>`, stopping at the filesystem root or a `.git` boundary,
-// then falls back to the global npm root as a last resort.
+// then falls back to the global npm roots as a last resort.
 export function findPackageDir(name: string, startDir: string): FoundPackage | undefined {
   const nameParts = name.split("/");
   let dir = startDir;
@@ -62,5 +85,9 @@ export function findPackageDir(name: string, startDir: string): FoundPackage | u
     dir = parent;
   }
 
-  return tryLoad(name, nameParts, globalNodeModulesDir());
+  for (const globalDir of globalNodeModulesDirs()) {
+    const found = tryLoad(name, nameParts, globalDir);
+    if (found) return found;
+  }
+  return undefined;
 }

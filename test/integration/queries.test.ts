@@ -268,3 +268,33 @@ test("guide lookups prefer an updated corpus in the per-user, per-version data d
     rmSync(dataHome, { recursive: true, force: true });
   }
 });
+
+// The global fallback derived the root from process.execPath only. Under Homebrew that resolves into the Cellar
+// (`<prefix>/Cellar/node/<v>/bin/node`), so `<prefix>/lib/node_modules` — where every global package, nest-doc
+// included, actually lives — was never searched. The running script's own node_modules is that directory.
+test("a globally installed package is found via the node_modules nest-doc itself is installed in", () => {
+  const prefix = mkdtempSync(join(tmpdir(), "getnestdoc-global-prefix-"));
+  try {
+    const globalRoot = join(prefix, "lib", "node_modules");
+    const self = join(globalRoot, "getnestdoc");
+    mkdirSync(join(self, "dist"), { recursive: true });
+    copyFileSync(BIN, join(self, "dist", "nest-doc.mjs"));
+    copyFileSync(join(REPO_ROOT, "package.json"), join(self, "package.json"));
+    symlinkSync(join(REPO_ROOT, "data"), join(self, "data"));
+    symlinkSync(join(REPO_ROOT, "node_modules"), join(self, "node_modules"));
+    mkdirSync(join(globalRoot, "global-only"), { recursive: true });
+    writeFileSync(join(globalRoot, "global-only", "package.json"), JSON.stringify({ name: "global-only", version: "3.0.0", types: "index.d.ts" }));
+    writeFileSync(join(globalRoot, "global-only", "index.d.ts"), "export declare function fromGlobal(): void;\n");
+    mkdirSync(join(prefix, "bin"));
+    symlinkSync(join(self, "dist", "nest-doc.mjs"), join(prefix, "bin", "nest-doc"));
+
+    withScratchProject({}, (projectDir) => {
+      const result = spawnSync(process.execPath, [join(prefix, "bin", "nest-doc"), "global-only"], { encoding: "utf8", cwd: projectDir, env: isolatedEnv({ XDG_CACHE_HOME: join(projectDir, "cache") }) });
+      assert.equal(result.status, 0, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^global-only@3\.0\.0$/m);
+      assert.match(result.stdout, /fromGlobal/);
+    });
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
+  }
+});
