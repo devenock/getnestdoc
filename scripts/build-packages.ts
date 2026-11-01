@@ -1,6 +1,10 @@
 // Produces data/packages.json (full symbol data, so a not-installed official package still renders real docs)
 // and data/names.json (bare-symbol-name -> owning package, derived from the same extraction pass).
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+//
+//   node scripts/build-packages.ts          latest published version of every package (release refresh)
+//   node scripts/build-packages.ts --pin    the versions already in data/packages.json — re-extracts after an
+//                                           extractor change without also pulling in upstream changes
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findPackageDir } from "../src/core/resolve/find-package.ts";
@@ -62,7 +66,13 @@ async function resolveLatestVersion(name: string): Promise<string> {
   return meta.version;
 }
 
+function pinnedVersions(): Map<string, string> {
+  const existing = JSON.parse(readFileSync("data/packages.json", "utf8")) as PackagesFile;
+  return new Map(Object.entries(existing.packages).map(([name, entry]) => [name, entry.packageVersion]));
+}
+
 async function main(): Promise<void> {
+  const pins = process.argv.includes("--pin") ? pinnedVersions() : undefined;
   const tmpDir = mkdtempSync(join(tmpdir(), "getnestdoc-packages-"));
   const packages: Record<string, PackageEntry> = {};
   const names = new Map<string, string[]>();
@@ -71,7 +81,9 @@ async function main(): Promise<void> {
   try {
     for (const short of PACKAGE_NAMES) {
       const packageName = `@nestjs/${short}`;
-      const version = await resolveLatestVersion(packageName);
+      const pinned = pins?.get(packageName);
+      if (pins && !pinned) throw new Error(`--pin: ${packageName} has no version in data/packages.json`);
+      const version = pinned ?? (await resolveLatestVersion(packageName));
       console.log(`Fetching ${packageName}@${version}...`);
       await fetchAndExtractPackage(packageName, version, tmpDir);
 
