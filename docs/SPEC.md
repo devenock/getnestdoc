@@ -229,7 +229,18 @@ Did you mean?
   nest-doc exception-filters
 ```
 
-Exit 1. Suggestions to stderr, so piping stays clean.
+Exit 1. Suggestions to stderr, so piping stays clean. Candidates are guide slugs, alias URLs, and — unless `--guide` — every name in `names.json`.
+
+A `package.symbol` query whose package resolves (installed or bundled) but has no such export is a miss answered from that package's own export list:
+
+```
+No export "Injectible" in @nestjs/common@12.0.1.
+
+Did you mean?
+  nest-doc common.Injectable
+```
+
+Same exit code and stream. The one exception: if the whole query is itself a resolvable package name containing a dot (`socket.io`), it resolves as that package instead.
 
 ---
 

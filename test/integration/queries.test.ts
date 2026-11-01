@@ -114,3 +114,48 @@ test("usage errors on the update subcommand exit 2, like the root command's", ()
     assert.doesNotMatch(result.stdout, /Fetching/, "must fail before any network access");
   }
 });
+
+const FIXTURES_ROOT = fileURLToPath(new URL("../fixtures", import.meta.url));
+
+// A typo in an existing package's export used to fall through every step: `common.Injectible` ended in a generic miss
+// suggesting only guide slugs, and `@nestjs/common.Injectible` claimed the package wasn't installed and exited 0.
+test("a missing export in an installed package is a miss with near matches from that package's exports", () => {
+  for (const query of ["common.Injectible", "@nestjs/common.Injectible"]) {
+    const result = run([query], FIXTURES_ROOT);
+    assert.equal(result.status, 1, `${query}: expected exit 1, got ${result.status}. stdout: ${result.stdout}`);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /^No export "Injectible" in @nestjs\/common@12\.0\.1\./);
+    assert.match(result.stderr, /Did you mean\?\n {2}nest-doc common\.Injectable\n/);
+  }
+});
+
+test("a missing export in a bundled (not installed) package gets the same treatment", () => {
+  const result = run(["throttler.Throtle"], FIXTURES_ROOT);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /^No export "Throtle" in @nestjs\/throttler@/);
+  assert.match(result.stderr, /nest-doc throttler\.Throttle/);
+});
+
+test("a bare-symbol typo suggests symbol names from the index, not only guide slugs", () => {
+  const result = run(["Injectible"], FIXTURES_ROOT);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /No guide or symbol matches "Injectible"/);
+  assert.match(result.stderr, /nest-doc Injectable\n/);
+});
+
+test("a dotted query that is itself an installed package name still resolves as that package", () => {
+  withScratchProject(
+    {
+      "node_modules/socket/package.json": JSON.stringify({ name: "socket", version: "1.0.0", types: "index.d.ts" }),
+      "node_modules/socket/index.d.ts": "export declare const plain: 1;\n",
+      "node_modules/socket.io/package.json": JSON.stringify({ name: "socket.io", version: "2.0.0", types: "index.d.ts" }),
+      "node_modules/socket.io/index.d.ts": "export declare class Server {}\n",
+    },
+    (projectDir) => {
+      const result = run(["socket.io"], projectDir);
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^socket\.io@2\.0\.0$/m);
+      assert.match(result.stdout, /Server/);
+    },
+  );
+});

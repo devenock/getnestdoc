@@ -13,6 +13,7 @@ import { clearCache } from "../core/cache/store.ts";
 import { renderSymbol } from "../nest/render-symbol.ts";
 import { renderPackageIndex } from "../nest/render-package-index.ts";
 import { runUpdate } from "../nest/update.ts";
+import { shorthandFor } from "../nest/package-scope.ts";
 import type { GuidesFile } from "../nest/guides/types.ts";
 import type { AliasFile } from "../nest/aliases.ts";
 import type { RenderOptions } from "../core/render/ansi.ts";
@@ -48,6 +49,16 @@ function notInstalledMessage(packageName: string): string {
 
 function bundledNote(packageName: string, packageVersion: string): string {
   return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${packageName}\` to match your own version)`;
+}
+
+// A miss: headline and suggestions on stderr so piped stdout stays empty (SPEC.md §4.4), exit 1.
+function writeMiss(headline: string, suggestions: string[]): void {
+  process.stderr.write(`${headline}\n`);
+  if (suggestions.length > 0) {
+    process.stderr.write("\nDid you mean?\n");
+    for (const s of suggestions) process.stderr.write(`  nest-doc ${s}\n`);
+  }
+  process.exitCode = 1;
 }
 
 function renderAmbiguous(name: string, packageNames: string[]): string {
@@ -127,10 +138,22 @@ export function createProgram(dataDir: string): Command {
           }
 
           if (resolved.status === "found") {
-            const symbol = resolved.result.symbols.find((s) => s.name === split.symbolName);
+            const { packageName, packageVersion, symbols, bundled } = resolved.result;
+            const symbol = symbols.find((s) => s.name === split.symbolName);
             if (symbol) {
-              const symbolOutput = renderSymbol(resolved.result.packageName, resolved.result.packageVersion, symbol, guidesFile, aliasFile, renderOptions);
-              await writeOutput(resolved.result.bundled ? `${symbolOutput}\n\n${bundledNote(resolved.result.packageName, resolved.result.packageVersion)}` : symbolOutput);
+              const symbolOutput = renderSymbol(packageName, packageVersion, symbol, guidesFile, aliasFile, renderOptions);
+              await writeOutput(bundled ? `${symbolOutput}\n\n${bundledNote(packageName, packageVersion)}` : symbolOutput);
+              return;
+            }
+
+            // The package exists but has no such export — a definitive miss, answered from that package's own export
+            // list (ARCHITECTURE.md §10), unless the whole query is itself a package name with a dot in it.
+            if ((await resolvePackageSymbolsOrBundled(query, cwd, dataDir)).status !== "found") {
+              const prefix = shorthandFor(packageName);
+              writeMiss(
+                `No export "${split.symbolName}" in ${packageName}@${packageVersion}.`,
+                suggest(split.symbolName, symbols.map((s) => s.name)).map((name) => `${prefix}.${name}`),
+              );
               return;
             }
           }
@@ -197,15 +220,10 @@ export function createProgram(dataDir: string): Command {
         }
       }
 
+      // Symbol names are only candidates when symbols were in scope for this query.
       const candidates = [...Object.keys(guidesFile.guides), ...Object.keys(aliasFile.urlToSlug)];
-      const suggestions = suggest(query, candidates);
-
-      process.stderr.write(`No guide or symbol matches "${query}".\n`);
-      if (suggestions.length > 0) {
-        process.stderr.write("\nDid you mean?\n");
-        for (const s of suggestions) process.stderr.write(`  nest-doc ${s}\n`);
-      }
-      process.exitCode = 1;
+      if (!opts.guide) candidates.push(...Object.keys(loadNameIndex(dataDir).names));
+      writeMiss(`No guide or symbol matches "${query}".`, suggest(query, candidates));
     });
 
   program
