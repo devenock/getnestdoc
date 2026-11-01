@@ -54,8 +54,8 @@ function resolveModuleSpecifier(fromDir: string, specifier: string, scope: Scope
   return bare ? { file: bare.entryFile, scope: bare.scope } : undefined;
 }
 
-// Merges overloads into one record: the first documented overload's prose, plus every overload's tags (@param deduplicated by name) and @see links.
-function mergeOverloadDocs(docs: JsDocResult[]): JsDocResult {
+// Merges same-name declarations into one record: the first documented declaration's prose, plus every declaration's tags (@param deduplicated by name) and @see links.
+function mergeDeclarationDocs(docs: JsDocResult[]): JsDocResult {
   const primary = docs.find((d) => d.doc.length > 0) ?? docs[0]!;
   const tags: JsDocResult["tags"] = [];
   const tagKeys = new Set<string>();
@@ -87,17 +87,15 @@ function buildSymbolRecord(
   filePath: string,
   scope: Scope,
 ): SymbolRecord {
-  // Same-name declarations that aren't all function overloads (declaration merging) keep the last one, as before.
-  const isOverloadSet = entries.length > 1 && entries.every((e) => e.kind === "function");
-  const used = isOverloadSet ? entries : [entries[entries.length - 1]!];
-
-  const { doc, tags, see, isPublicApi } = isOverloadSet ? mergeOverloadDocs(used.map((e) => extractJsDoc(ts, e.node))) : extractJsDoc(ts, used[0]!.node);
-  const signature = used.map((e) => extractSignature(e.node, sourceFile)).join("\n");
-  const { line } = sourceFile.getLineAndCharacterOfPosition(used[0]!.node.getStart(sourceFile));
+  // Overloads and declaration merging alike (`abstract class Cache {}` + `interface Cache …`): every declaration's signature, one per line. The kind is the first value declaration's — the class, function, enum, or const a user actually writes — else the first.
+  const { doc, tags, see, isPublicApi } = entries.length > 1 ? mergeDeclarationDocs(entries.map((e) => extractJsDoc(ts, e.node))) : extractJsDoc(ts, entries[0]!.node);
+  const signature = entries.map((e) => extractSignature(e.node, sourceFile)).join("\n");
+  const primary = entries.find((e) => e.kind !== "interface" && e.kind !== "type") ?? entries[0]!;
+  const { line } = sourceFile.getLineAndCharacterOfPosition(primary.node.getStart(sourceFile));
 
   return sanitizeSymbolRecord({
     name,
-    kind: used[0]!.kind,
+    kind: primary.kind,
     signature,
     doc,
     tags,

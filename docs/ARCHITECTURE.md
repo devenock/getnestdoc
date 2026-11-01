@@ -243,7 +243,7 @@ For each exported name, from its declaration node(s):
 | `isPublicApi` | `tags` includes `publicApi` |
 | `file`, `line` | declaration site, `file` relative to the package directory (prefixed with the dependency's name for a symbol re-exported from one) — provenance only, not rendered |
 
-Function overloads merge into one record (ADR-0011): one signature line per overload, the first documented overload's prose, the union of tags and `@see` links. Every string field passes through `sanitize.ts` before it's cached or printed (ADR-0009).
+Same-name declarations — function overloads and declaration merging alike — merge into one record (ADR-0011): one signature line per declaration, the first documented prose, the union of tags and `@see` links, and the first value declaration's kind. Every string field passes through `sanitize.ts` before it's cached or printed (ADR-0009).
 
 `ts.createSourceFile` must be called with `setParentNodes: true` for `getText()` to work.
 

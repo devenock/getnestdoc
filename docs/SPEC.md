@@ -140,7 +140,7 @@ Path: `${XDG_CACHE_HOME:-~/.cache}/getnestdoc/<name>@<version>.json`, with `/` i
 
 ```ts
 type CacheFile = {
-  version: 4;            // bump invalidates every entry — bumped whenever extraction output changes
+  version: 5;            // bump invalidates every entry — bumped whenever extraction output changes
   package: string;
   packageVersion: string;
   entryFile: string;     // absolute path extraction started from
@@ -151,7 +151,7 @@ type CacheFile = {
 type SymbolRecord = {
   name: string;
   kind: "function" | "class" | "interface" | "type" | "enum" | "const" | "variable";
-  signature: string;     // declaration text, JSDoc lines stripped, single line where possible; one line per overload (ADR-0011)
+  signature: string;     // declaration text, JSDoc lines stripped, single line where possible; one line per declaration for overloads and merged declarations (ADR-0011)
   doc: string;           // JSDoc body, markdown, no tags
   tags: { name: string; text: string }[];
   see: { text: string; url: string }[];

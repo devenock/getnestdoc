@@ -422,6 +422,8 @@ Same-name function declarations in one file merge into one record:
 
 Same-name declarations that aren't all functions (declaration merging, e.g. an interface and a const) keep the previous behaviour — the last declaration wins.
 
+*Amended 2026-11-01:* declaration merging now merges the same way. Verified against the TypeScript checker's documentation comments across the latest Nest 10/11/12, "last wins" was the only remaining doc loss: `@nestjs/cache-manager`'s documented `abstract class Cache` (the injection token) is merged with an undocumented `interface Cache`, and the record showed the bare interface. Every same-name declaration set — overloads or merging — now shows each declaration's signature, the first documented prose, and the union of tags; `kind` is the first *value* declaration's (class, function, enum, const — what a user writes), else the first. Exactly 6 exports across the scope changed (`Cache`, `EventEmitter2`, `ThrottlerStorage`, and `@nestjs/jwt`'s three error classes), and documented exports now match the checker one for one.
+
 ### Consequences
 
 - No change to the `SymbolRecord` shape, so the cache, `packages.json`, and every consumer stay compatible. `signature` is multi-line only for overload sets, which SPEC.md §3's "single line where possible" already allows.

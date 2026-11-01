@@ -14,7 +14,7 @@ export type CacheFile = {
   symbols: SymbolRecord[];
 };
 
-export const CACHE_FORMAT_VERSION = 4;
+export const CACHE_FORMAT_VERSION = 5;
 let warnedUnwritable = false;
 let warnedUnsafePath = false;
 

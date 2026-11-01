@@ -396,3 +396,23 @@ test("default exports are recorded as `default`, and `export *` never re-exports
     ["default", "fromA", "Named"].sort(),
   );
 });
+
+// @nestjs/cache-manager (every Nest major): a documented `abstract class Cache` — the injection token — merged with an
+// undocumented `interface Cache`. Keeping only the last declaration showed the bare interface and lost the docs.
+test("declaration merging keeps every declaration, the documented prose, and the value's kind", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-merge-test-"));
+  try {
+    writeFileSync(
+      join(root, "index.d.ts"),
+      `/** Use as a provider token. */\nexport declare abstract class Cache {\n}\nexport interface Cache extends Store {\n}\nexport type Token = string;\nexport declare const Token: unique symbol;\n`,
+    );
+    const records = await extractPackage(join(root, "index.d.ts"), root);
+    const cache = records.find((r) => r.name === "Cache")!;
+    assert.equal(cache.kind, "class");
+    assert.equal(cache.doc, "Use as a provider token.");
+    assert.deepEqual(cache.signature.split("\n"), ["export declare abstract class Cache { }", "export interface Cache extends Store { }"]);
+    assert.equal(records.find((r) => r.name === "Token")!.kind, "const", "a type alias merged with a const is the const");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
