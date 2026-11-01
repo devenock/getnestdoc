@@ -38,7 +38,7 @@ npm run build        # bundles dist/nest-doc.mjs
 npm run bench        # latency budget — see below
 ```
 
-All four need to pass. CI runs the same commands.
+All five need to pass. CI runs the same commands, plus the benchmark at each budget listed in `docs/TESTING.md`.
 
 ## The constraints that shape everything here
 
@@ -46,7 +46,7 @@ All four need to pass. CI runs the same commands.
 
 **`core/` must not import from `nest/`.** Enforced by ESLint, not just convention. `core/` is the generic, extractable engine (rendering, resolution, extraction, caching); `nest/` is where Nest-specific knowledge lives (guides, the `common.X` shorthand, decorator lookup). If you're not sure which side something belongs on, ask in the PR rather than guessing.
 
-**A package's `package.json` and `.d.ts` files are untrusted input, always.** This tool reads whatever's installed in a user's `node_modules` — that's third-party, potentially adversarial data, not something the CLI's own caller wrote. Any new code that builds a filesystem path or a terminal string from package content needs to go through the same sanitization the existing code does (`core/cache/paths.ts`, `core/extract/barrels.ts`, `core/extract/sanitize.ts`). See `docs/DECISIONS.md` ADR-0009 for what happens when this gets skipped — three real, exploitable bugs, all from treating third-party file content as trusted.
+**A package's `package.json` and `.d.ts` files are untrusted input, always.** This tool reads whatever's installed in a user's `node_modules` — that's third-party, potentially adversarial data, not something the CLI's own caller wrote. Any new code that builds a filesystem path or a terminal string from package content needs to go through the same checks the existing code does (`core/contain.ts` for paths, `core/cache/paths.ts` for cache filenames, `core/extract/sanitize.ts` for text). See `docs/DECISIONS.md` ADR-0009 for what happens when this gets skipped — four real, exploitable bugs, all from treating third-party file content as trusted.
 
 **No `enum`, no `namespace` in `src/`.** Node's native type stripping rejects both. Use `as const` objects and union types.
 

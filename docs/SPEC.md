@@ -294,8 +294,8 @@ Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the sym
 | 0 | success |
 | 1 | query not found |
 | 2 | usage error — unknown flag, missing argument |
-| 3 | package found but unusable — ships no types |
-| 4 | internal error — unexpected, prints a stack trace |
+| 3 | package found but unusable — ships no types, or its package.json can't be read |
+| 4 | internal error — unexpected, prints a stack trace (also: `typescript` missing or 7.x on a symbol lookup, `nest-doc update` failing) |
 
 ### Environment
 
@@ -316,9 +316,10 @@ Runtime dependencies are a latency cost. Each addition needs a measured bundled 
 
 | Package | Version | Why | Loaded |
 |---|---|---|---|
-| `typescript` | `6.0.3` **exact** | Compiler API; 7.x removed it (ADR-0001) | lazily, symbol path only |
+| `typescript` | `6.0.3` **exact** | Compiler API; 7.x removed it (ADR-0001) | lazily, cold symbol path only |
 | `commander` | `^15.0.0` | CLI parsing (ADR-0005) | always |
+| `marked` | `^18.0.11` | tokenising guides — `nest-doc update` only | lazily, `update` only |
 
-`marked` is a **devDependency**. Guides ship pre-tokenised, so it never loads at runtime.
+`marked` is a runtime dependency only because `nest-doc update` re-runs the guide pipeline on the user's machine. Guides ship pre-tokenised, so no lookup ever loads it.
 
 Not used, deliberately: `marked-terminal` (+79 ms, ADR-0003), `cli-highlight` (pulls highlight.js), `chalk` (ANSI codes are a dozen constants).

@@ -31,6 +31,8 @@ Pin `"typescript": "6.0.3"` — exact, no caret — with an inline comment stati
 
 Add a CI assertion that `typeof ts.createSourceFile === "function"`, so a transitive or careless bump fails the build rather than the user's first command.
 
+*Update 2026-11-01:* the assertion didn't exist until now — it's in `test/typescript.test.ts`, alongside an exact `6.0.3` pin check. At runtime, `loadTypeScript` also rejects a module without `createSourceFile` with a message naming 6.0.3, rather than letting the first lookup fail with "is not a function".
+
 ### Consequences
 
 - Immune to an accidental bump into a version that cannot work.
@@ -137,8 +139,8 @@ The alias table is generated from the docs repo's own `*.routes.ts` route defini
 
 ### Consequences
 
-- Guides are pinned to the release. Staleness is bounded by release cadence — refresh in CI on a schedule.
-- `nest-doc update` provides an escape hatch for users who want a newer corpus, as the only networked command.
+- Guides are pinned to the release. Staleness is bounded by release cadence — refresh in CI on a schedule. *(Update 2026-11-01: no scheduled refresh exists; the build scripts are run by hand before a release — ARCHITECTURE.md §6.1.)*
+- `nest-doc update` provides an escape hatch for users who want a newer corpus, as the only networked command. *(It writes to a per-user directory, not the package — ADR-0013.)*
 - Retain the Nest copyright notice in the package and attribute clearly in the README.
 - A docs repo restructure breaks the build script. It fails loudly at build time, never silently at runtime.
 
@@ -269,7 +271,7 @@ nest-doc Get           bare symbol     → search the name index
 
 Guides win ties — `nest-doc Module` could mean the guide or the decorator; guides are the cheaper, more common intent, and `--api` forces the other.
 
-**Name index.** Bare lookup needs name → package. Ship a prebuilt index for the official `@nestjs` scope, generated alongside `guides.json`, rather than scanned: it's instant, needs no cache warm-up, and works before the package is even installed (in which case the tool reports the symbol, names its package, and says it isn't installed). Fall back to scanning installed `@nestjs/*` for anything outside the shipped index. Where a name maps to several packages, print the list and exit 1 rather than guessing.
+**Name index.** Bare lookup needs name → package. Ship a prebuilt index for the official `@nestjs` scope, generated alongside `guides.json`, rather than scanned: it's instant, needs no cache warm-up, and works before the package is even installed (in which case the tool reports the symbol, names its package, and says it isn't installed). Fall back to scanning installed `@nestjs/*` for anything outside the shipped index *(update 2026-11-01: skipping installs at exactly the bundled version, which the index already covers — otherwise every typo cold-extracted every installed package, measured 321 ms with three)*. Where a name maps to several packages, print the list and exit 1 rather than guessing.
 
 ### Consequences
 
@@ -320,7 +322,8 @@ Two real, verified pitfalls, both caught by testing the actual behavior rather t
 - Scrolling and search work for long output without a new runtime dependency — `less` is assumed present (near-universal on Unix-likes; falls back to a plain print if it isn't, rather than failing).
 - Piped/redirected/short output is completely unaffected — verified via the full integration suite (spawned via `spawnSync`, never a TTY) and a dedicated test asserting a 165-line guide still prints in full when spawned non-interactively.
 - `$PAGER` is respected for users who already have one configured; a missing or broken pager degrades to a plain print rather than losing output.
-- If this doesn't hold up in practice, it's a small, isolated, reversible change — one module (`core/pager.ts`) and six call sites in `cli/doc.command.ts`.
+- If this doesn't hold up in practice, it's a small, isolated, reversible change — one module (`core/pager.ts`) and its `writeOutput` call sites in `cli/doc.command.ts`.
+- *Update 2026-11-01:* Ctrl-C while paging was checked in a real pseudo-terminal under shell-style job control (macOS, less 668): node exits on SIGINT, `less` exits with it after restoring the terminal (alternate screen left, echo and canonical mode back on). So `^C` quits the pager rather than being swallowed by it as in `git`; nothing is left broken. Not yet verified on Linux.
 
 ---
 
@@ -385,7 +388,7 @@ Building this surfaced a real, separate bug in the extraction engine itself: `@n
 
 ### Consequences
 
-- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
+- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped; 840 KB / 96 KB after the 2026-11-01 re-extraction with overload merging, ADR-0011) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
 - Loaded lazily — only inside the not-installed fallback branch, never on the hot path. Benchmarked directly: `nest-doc interceptors` (150 ms budget) still runs at ~52 ms median, and the bundled-fallback path itself (`nest-doc @nestjs/throttler`, nothing installed) runs at ~60 ms median, ~105 ms p95 — comfortably inside budget.
 - Bundled data is pinned to whatever was live on npm at the time `build-packages.ts` last ran — the same relationship Go has between your installed toolchain version and the stdlib docs it shows you. Refreshed on `getnestdoc` releases, not on every `nest-doc update` (which stays guide-only, per its own contract of being the only networked command run by users).
 - `scripts/build-names.ts` is deleted; `build:names` in `package.json` is now `build:packages`.

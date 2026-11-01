@@ -105,7 +105,7 @@ export function createProgram(dataDir: string): Command {
     .name("nest-doc")
     .description("A terminal documentation reader for NestJS.")
     .version(pkg.version, "-v, --version", "output the version number")
-    .argument("[query]", "guide slug, concept name, package name, package.Symbol, @Decorator, or bare symbol name")
+    .argument("[query]", "guide slug (or slug#section), concept name, package name, package.Symbol, @Decorator, or bare symbol name")
     .option("--js", "show JavaScript code samples instead of TypeScript")
     // Mutually exclusive: together they'd skip every resolution step and report a miss for any query.
     .addOption(new Option("--guide", "force guide resolution (steps 1-2 only)").conflicts("api"))

@@ -57,7 +57,7 @@ Three Nest majors for `@nestjs/common`, because packaging changed across them an
 
 **Render the whole corpus, not a sample.** Hand-written renderers fail on the one file with a nested table inside a list. Iterate all 143 guides, every time.
 
-**Every latency-relevant change re-runs the benchmark.** Headroom is ~30 ms. A 10 ms regression is a third of it, and it is invisible without a threshold.
+**Every latency-relevant change re-runs the benchmark.** Headroom is ~100 ms on every hot path (ARCHITECTURE.md §9) — generous, which is exactly how it gets spent unnoticed. A regression is invisible without a threshold.
 
 **Test the piped path.** ANSI leaking into `nest-doc x | grep` is a real bug that no TTY test catches. Assert `\x1b` is absent from non-TTY output.
 
