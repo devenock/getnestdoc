@@ -346,3 +346,26 @@ test("a guide-path typo containing a slash still gets guide suggestions, not a b
   assert.match(result.stderr, /nest-doc fundamentals\/custom-providers/);
   assert.doesNotMatch(result.stdout + result.stderr, /npm i/);
 });
+
+// Since @nestjs/platform-fastify@12.3 also exports FileInterceptor and friends, the bundled index lists two owners,
+// and a project with only platform-express installed got an ambiguity list for the name it was actually using.
+test("an ambiguous bare name resolves to its owner when exactly one owner is installed", () => {
+  const stub = (name: string) => ({
+    [`node_modules/${name}/package.json`]: JSON.stringify({ name, version: "12.3.2", types: "index.d.ts" }),
+    [`node_modules/${name}/index.d.ts`]: `/** The ${name.split("-").pop()} flavour. @publicApi */\nexport declare function FileInterceptor(field: string): unknown;\n`,
+  });
+  withScratchProject(stub("@nestjs/platform-express"), (projectDir) => {
+    const result = run(["FileInterceptor"], projectDir);
+    assert.equal(result.status, 0, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^@nestjs\/platform-express@12\.3\.2$/m);
+    assert.match(result.stdout, /The express flavour\./);
+  });
+  withScratchProject({ ...stub("@nestjs/platform-express"), ...stub("@nestjs/platform-fastify") }, (projectDir) => {
+    const result = run(["FileInterceptor"], projectDir);
+    assert.equal(result.status, 1, "both installed is genuinely ambiguous");
+    assert.match(result.stdout, /ambiguous/);
+  });
+  withScratchProject({}, (projectDir) => {
+    assert.equal(run(["FileInterceptor"], projectDir).status, 1, "neither installed stays ambiguous");
+  });
+});

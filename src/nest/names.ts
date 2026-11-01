@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { SymbolRecord } from "../core/extract/types.ts";
 import { own } from "../core/own.ts";
 import { findPackageDir } from "../core/resolve/find-package.ts";
+import { splitModuleSpecifier } from "../core/resolve/specifier.ts";
 import { loadBundledPackages } from "./bundled-packages.ts";
 import { resolvePackageSymbols, resolvePackageSymbolsOrBundled } from "./symbols.ts";
 
@@ -71,9 +72,15 @@ export async function resolveBareSymbol(name: string, dataDir: string, startDir:
   const owners = own(nameIndex.names, name);
 
   if (!owners) return scanInstalledPackagesForName(name, startDir, dataDir);
-  if (owners.length > 1) return { status: "ambiguous", packageNames: owners };
 
-  const packageName = owners[0]!;
+  // Several packages export the name, but if exactly one is installed here, that's the one this project imports it from.
+  let packageName = owners[0]!;
+  if (owners.length > 1) {
+    const installed = owners.filter((owner) => findPackageDir(splitModuleSpecifier(owner).packageName, startDir) !== undefined);
+    if (installed.length !== 1) return { status: "ambiguous", packageNames: owners };
+    packageName = installed[0]!;
+  }
+
   const resolved = await resolvePackageSymbolsOrBundled(packageName, startDir, dataDir);
   if (resolved.status === "not-installed") return { status: "not-installed", packageName, name };
   // Installed but unusable is a local problem to report as such, never "isn't installed".

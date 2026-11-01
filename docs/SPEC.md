@@ -130,7 +130,7 @@ type PackagesFile = {
 };
 ```
 
-`names.json` maps a bare symbol name to its owning package(s); where a name maps to several, the CLI lists them and exits 1 rather than guessing. `packages.json` carries full `SymbolRecord[]` data per package — the reference fallback `resolvePackageSymbolsOrBundled` reaches for only when a live `node_modules` lookup misses. A live install always wins over bundled data; output from the bundled path carries an explicit note naming the bundled version.
+`names.json` maps a bare symbol name to its owning package(s); where a name maps to several, the CLI uses the one installed in the project if exactly one is, and otherwise lists them and exits 1 rather than guessing. `packages.json` carries full `SymbolRecord[]` data per package — the reference fallback `resolvePackageSymbolsOrBundled` reaches for only when a live `node_modules` lookup misses. A live install always wins over bundled data; output from the bundled path carries an explicit note naming the bundled version.
 
 ---
 
