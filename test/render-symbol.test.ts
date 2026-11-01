@@ -103,3 +103,30 @@ test("an overloaded symbol renders one signature per overload, continuations ind
   assert.ok(output.includes("function Body(): ParameterDecorator\n"));
   for (const line of output.split("\n")) assert.ok(line.length <= 80, `line exceeds width: ${line}`);
 });
+
+// plainText() flattened the whole doc into one paragraph: separate paragraphs merged, bullet lists ran into prose,
+// and a ```typescript fence became "For example: typescript async create(...)" (14 bundled symbols carry one).
+test("a symbol's doc keeps its paragraphs, bullet lists, and code examples (SPEC.md §4.1)", async () => {
+  const { symbols, version } = await extract("@nestjs/common");
+  const render = (name: string) => renderSymbol("@nestjs/common", version, symbols.find((s) => s.name === name)!, guidesFile, aliasFile, { width: 100, color: false });
+
+  const injectable = render("Injectable");
+  assert.match(injectable, /built-in Dependency Injection \(DI\) system\.\n\n {4}When injecting a provider/, "paragraphs stay separate");
+  assert.match(injectable, /\n {4}• defining the provider in the same module scope\n/, "list items are bulleted");
+  assert.match(injectable, /\n {4}• exporting the provider from one module scope and importing that module into the module scope\n {6}of the class/, "a wrapped item hangs under its text");
+
+  const body = render("Body");
+  assert.match(body, /\n {4}For example:\n\n {8}async create\(@Body\(\) createDto: CreateCatDto\)\n/, "the fence renders as an indented code block");
+  assert.doesNotMatch(body, /```|typescript async/, "no fence markers or language tag leak into prose");
+});
+
+test("the package index summary is the first prose sentence, never a code example", async () => {
+  const { docBlocks, firstSentence } = await import("../src/nest/doc-text.ts");
+  assert.equal(firstSentence("```ts\nconst x = 1;\n```\nDoes the thing. More."), "Does the thing.");
+  assert.deepEqual(docBlocks("One\ntwo.\n\n- a\n  b\n- c\nAfter.\n```ts\n  x();\n```"), [
+    { kind: "paragraph", text: "One two." },
+    { kind: "list", items: ["a b", "c"] },
+    { kind: "paragraph", text: "After." },
+    { kind: "code", code: "x();" },
+  ]);
+});

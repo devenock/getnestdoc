@@ -2,7 +2,7 @@ import { visibleLength } from "../core/render/ansi.ts";
 import type { RenderOptions } from "../core/render/ansi.ts";
 import type { SymbolKind, SymbolRecord } from "../core/extract/types.ts";
 import { shorthandFor } from "./package-scope.ts";
-import { plainText } from "./doc-text.ts";
+import { firstSentence } from "./doc-text.ts";
 
 // A "decorator" isn't a SymbolKind — display-only bucket, detected by a `function`/`const` whose signature ends in a *Decorator return type (verified: 420 real exports, zero false positives).
 type Bucket = "decorator" | SymbolKind;
@@ -27,13 +27,6 @@ const BUCKET_LABELS: Record<Bucket, string> = {
   const: "CONSTANTS",
   variable: "VARIABLES",
 };
-
-// Extracts the first sentence of a doc string, falling back to the whole thing when there's no terminal period.
-function firstSentence(doc: string): string {
-  const plain = plainText(doc);
-  const match = /^(.*?[.!?])(\s|$)/.exec(plain);
-  return match ? match[1]! : plain;
-}
 
 function truncate(text: string, width: number): string {
   if (visibleLength(text) <= width) return text;

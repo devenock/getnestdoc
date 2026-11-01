@@ -4,7 +4,8 @@ import type { SymbolRecord } from "../core/extract/types.ts";
 import type { AliasFile } from "./aliases.ts";
 import { resolveSeeUrl } from "./guides/index.ts";
 import type { GuidesFile } from "./guides/types.ts";
-import { plainText } from "./doc-text.ts";
+import { docBlocks, plainText } from "./doc-text.ts";
+import { renderCodeLines } from "../core/render/code.ts";
 
 const NO_DOC_LINE = "No documentation available in this package.";
 
@@ -43,6 +44,21 @@ function renderSeeAlso(see: { url: string }[], guidesFile: GuidesFile, aliasFile
   return lines;
 }
 
+// The doc body, indented four (SPEC.md §4.1): paragraphs wrapped, lists bulleted with a hanging indent, code
+// examples highlighted like guide code and indented a further four. Blocks are separated by one blank line.
+function renderDocBody(doc: string, options: RenderOptions): string[] {
+  const sections = docBlocks(doc).map((block) => {
+    if (block.kind === "paragraph") return wrapText(plainText(block.text), Math.max(1, options.width - 4)).map((l) => `    ${l}`);
+    if (block.kind === "list") {
+      return block.items.flatMap((item) =>
+        wrapText(plainText(item), Math.max(1, options.width - 6)).map((l, i) => (i === 0 ? `    • ${l}` : `      ${l}`)),
+      );
+    }
+    return renderCodeLines(block.code, { ...options, width: Math.max(1, options.width - 8) }).map((l) => `        ${l}`);
+  });
+  return sections.flatMap((section, i) => (i === 0 ? section : ["", ...section]));
+}
+
 // Renders one symbol's signature, doc, parameters, and see-also links; a package can ship zero JSDoc, so the doc section always shows an explicit fallback line rather than going blank.
 export function renderSymbol(
   packageName: string,
@@ -64,9 +80,7 @@ export function renderSymbol(
   lines.push("");
 
   if (symbol.doc) {
-    for (const wrapped of wrapText(plainText(symbol.doc), Math.max(1, options.width - 4))) {
-      lines.push(`    ${wrapped}`);
-    }
+    lines.push(...renderDocBody(symbol.doc, options));
   } else {
     lines.push(`    ${NO_DOC_LINE}`);
   }
