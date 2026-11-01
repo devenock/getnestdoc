@@ -284,3 +284,66 @@ test("readCache strips raw escape sequences from an already-cached entry, not ju
     rmSync(cacheDir, { recursive: true, force: true });
   }
 });
+
+// Valid JSON with the wrong shape used to pass straight through: `{ "version": 1 }` crashed the lookup on
+// `symbols.map`, exit 4. ARCHITECTURE.md §10: a corrupt entry is deleted, re-extracted, and the lookup continues.
+test("a parseable cache entry with the wrong shape is deleted and treated as a miss, never a crash", () => {
+  const malformed: unknown[] = [
+    { version: 1 },
+    sampleCacheFile({ symbols: "nope" as unknown as CacheFile["symbols"] }),
+    sampleCacheFile({ symbols: [{ name: "X" }] as unknown as CacheFile["symbols"] }),
+    sampleCacheFile({
+      symbols: [{ name: "X", kind: "spaceship", signature: "", doc: "", tags: [], see: [], isPublicApi: true, file: "a", line: 1 }] as unknown as CacheFile["symbols"],
+    }),
+    sampleCacheFile({
+      symbols: [{ name: "X", kind: "const", signature: "", doc: "", tags: [{ name: 1 }], see: [], isPublicApi: true, file: "a", line: 1 }] as unknown as CacheFile["symbols"],
+    }),
+    null,
+    [1, 2],
+  ];
+  for (const contents of malformed) {
+    const cacheDir = tempCacheDir();
+    try {
+      const filePath = mustGetCacheFilePath(cacheDir, "@nestjs/common", "12.0.1");
+      writeFileSync(filePath, JSON.stringify(contents));
+      assert.equal(readCache(cacheDir, "@nestjs/common", "12.0.1"), undefined, `expected a miss for ${JSON.stringify(contents)}`);
+      assert.ok(!existsSync(filePath), `expected ${JSON.stringify(contents)} to be deleted`);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("every SymbolRecord string field is sanitized on read, including name and file", () => {
+  const cacheDir = tempCacheDir();
+  try {
+    const esc = "\x1b";
+    const filePath = mustGetCacheFilePath(cacheDir, "@nestjs/common", "12.0.1");
+    writeFileSync(
+      filePath,
+      JSON.stringify(
+        sampleCacheFile({
+          symbols: [
+            {
+              name: `Evil${esc}]52;c;cHduZWQ=\x07`,
+              kind: "const",
+              signature: "",
+              doc: "",
+              tags: [{ name: `ex${esc}`, text: "" }],
+              see: [],
+              isPublicApi: true,
+              file: `dir${esc}[2J/index.d.ts`,
+              line: 1,
+            },
+          ],
+        }),
+      ),
+    );
+    const symbol = readCache(cacheDir, "@nestjs/common", "12.0.1")!.symbols[0]!;
+    for (const value of [symbol.name, symbol.file, symbol.tags[0]!.name]) {
+      assert.ok(!value.includes(esc) && !value.includes("\x07"), `control byte survived: ${JSON.stringify(value)}`);
+    }
+  } finally {
+    rmSync(cacheDir, { recursive: true, force: true });
+  }
+});

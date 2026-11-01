@@ -6,7 +6,7 @@ import { getFileExports, parseSourceFile } from "./parse.ts";
 import type { JsDocResult } from "./jsdoc.ts";
 import { extractJsDoc } from "./jsdoc.ts";
 import { extractSignature } from "./signature.ts";
-import { sanitizeExtractedText } from "./sanitize.ts";
+import { sanitizeSymbolRecord } from "./sanitize.ts";
 import { loadTypeScript } from "./typescript-loader.ts";
 import type { SymbolRecord } from "./types.ts";
 import type TS from "typescript";
@@ -68,17 +68,17 @@ function buildSymbolRecord(
   const signature = used.map((e) => extractSignature(e.node, sourceFile)).join("\n");
   const { line } = sourceFile.getLineAndCharacterOfPosition(used[0]!.node.getStart(sourceFile));
 
-  return {
+  return sanitizeSymbolRecord({
     name,
     kind: used[0]!.kind,
-    signature: sanitizeExtractedText(signature),
-    doc: sanitizeExtractedText(doc),
-    tags: tags.map((tag) => ({ name: tag.name, text: sanitizeExtractedText(tag.text) })),
-    see: see.map((link) => ({ text: sanitizeExtractedText(link.text), url: sanitizeExtractedText(link.url) })),
+    signature,
+    doc,
+    tags,
+    see,
     isPublicApi,
     file: relative(packageRoot, filePath),
     line: line + 1, // 1-based
-  };
+  });
 }
 
 // What a visit asks a file for: everything it exports, or specific names — keyed by the name *this file* exports,
