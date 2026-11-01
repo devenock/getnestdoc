@@ -446,3 +446,29 @@ Matching is exact first, then punctuation-insensitive (both sides lowercased, ru
 - Every printed hint runs: 115 of 121 land on their section, 6 on the whole guide with a note. `test/guides.test.ts` pins those exact numbers, so upstream link churn or a drift in the anchor rule shows up as a test failure.
 - `#` is safe unquoted in POSIX shells mid-word, so the printed form is copy-pasteable as-is.
 - "See also" entries on symbols still print without anchors, matching SPEC.md §4.1.
+
+---
+
+## ADR-0013: `nest-doc update` writes to a per-user, per-version data directory
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+`nest-doc update` wrote the refreshed `guides.json`/`aliases.json` over the copies inside the package's own install directory (`<global node_modules>/getnestdoc/data/`). Two real problems:
+
+1. **It fails for system-wide installs.** A global install under a root-owned prefix (`sudo npm i -g`, distro Node in `/usr/lib/node_modules`) leaves `data/` unwritable by the user. Verified by running the real command against a scratch install with a read-only `data/`: the full corpus downloaded, then `EACCES`, exit 4 with a stack trace.
+2. **It doesn't survive.** Any reinstall or upgrade replaces the package directory and silently discards the update.
+
+### Decision
+
+`update` writes to `${XDG_DATA_HOME:-~/.local/share}/getnestdoc/<tool version>/`, then deletes sibling directories left by other tool versions. Guide lookups load from that directory when **both** `guides.json` and `aliases.json` exist there, otherwise from the package's own `data/`. `names.json` and `packages.json` always come from the package — `update` never touched them.
+
+Scoping by tool version is what keeps upgrades correct: a newer release ships a newer corpus (and possibly a newer token format its renderer expects), and an update made under an older version must never shadow it. Requiring both files means a half-written pair falls back to the release corpus rather than mixing two revisions.
+
+### Consequences
+
+- `update` works for every install layout without elevated permissions, and the result persists across reinstalls of the same version.
+- After an upgrade, the release corpus is used until the user runs `update` again — the cost of never serving a corpus older than the one shipped.
+- Two `existsSync` calls on the guide path; no measurable latency.
+- `XDG_DATA_HOME` joins the environment table (SPEC.md §5). The test suite pins it to a nonexistent directory (`test/helpers/env.ts`) so a developer's own updated corpus can't leak into test runs.

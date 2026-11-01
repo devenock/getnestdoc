@@ -11,6 +11,7 @@ import { extractPackage } from "../src/core/extract/barrels.ts";
 import { resolveSeeUrl } from "../src/nest/guides/index.ts";
 import { loadGuides } from "../src/nest/guides/index.ts";
 import { loadAliases } from "../src/nest/aliases.ts";
+import { isolatedEnv } from "./helpers/env.ts";
 
 const BIN = fileURLToPath(new URL("../dist/nest-doc.mjs", import.meta.url));
 const FIXTURES_ROOT = fileURLToPath(new URL("./fixtures", import.meta.url));
@@ -19,7 +20,7 @@ const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 function run(args: string[], cwd = REPO_ROOT) {
   const cacheDir = mkdtempSync(join(tmpdir(), "getnestdoc-phase8-cache-"));
   try {
-    return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: { ...process.env, XDG_CACHE_HOME: cacheDir } });
+    return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: isolatedEnv({ XDG_CACHE_HOME: cacheDir }) });
   } finally {
     rmSync(cacheDir, { recursive: true, force: true });
   }
@@ -183,7 +184,7 @@ test("a bare name mapping to multiple packages is ambiguous: exits 1, lists ever
       const result = spawnSync(process.execPath, [join(scratchRoot, "dist", "nest-doc.mjs"), "FakeCollide"], {
         encoding: "utf8",
         cwd: FIXTURES_ROOT,
-        env: { ...process.env, XDG_CACHE_HOME: cacheDir },
+        env: isolatedEnv({ XDG_CACHE_HOME: cacheDir }),
       });
       assert.equal(result.status, 1, `expected exit 1, got ${result.status}. stderr: ${result.stderr}`);
       assert.match(result.stdout, /ambiguous/i);

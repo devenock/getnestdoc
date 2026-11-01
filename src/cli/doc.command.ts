@@ -12,7 +12,7 @@ import { getCacheDir } from "../core/cache/paths.ts";
 import { clearCache } from "../core/cache/store.ts";
 import { renderSymbol } from "../nest/render-symbol.ts";
 import { renderPackageIndex } from "../nest/render-package-index.ts";
-import { runUpdate } from "../nest/update.ts";
+import { activeGuideDataDir, runUpdate } from "../nest/update.ts";
 import { shorthandFor } from "../nest/package-scope.ts";
 import type { GuidesFile } from "../nest/guides/types.ts";
 import type { AliasFile } from "../nest/aliases.ts";
@@ -125,8 +125,9 @@ export function createProgram(dataDir: string): Command {
         return;
       }
 
-      const guidesFile = loadGuides(dataDir);
-      const aliasFile = loadAliases(dataDir);
+      const guideDataDir = activeGuideDataDir(dataDir, pkg.version);
+      const guidesFile = loadGuides(guideDataDir);
+      const aliasFile = loadAliases(guideDataDir);
       const cwd = process.cwd();
       const renderOptions = resolveRenderOptions();
 
@@ -246,8 +247,8 @@ export function createProgram(dataDir: string): Command {
     .description("refresh the guide corpus from docs.nestjs.com (the only networked command)")
     .action(async () => {
       process.stdout.write("Fetching latest guides from docs.nestjs.com...\n");
-      const result = await runUpdate(dataDir);
-      process.stdout.write(`Updated: ${result.guideCount} guides, ${result.aliasCount} aliases (commit ${result.sourceCommit.slice(0, 7)}).\n`);
+      const result = await runUpdate(pkg.version);
+      process.stdout.write(`Updated: ${result.guideCount} guides, ${result.aliasCount} aliases (commit ${result.sourceCommit.slice(0, 7)}), stored in ${result.dataDir}.\n`);
     });
 
   return program;

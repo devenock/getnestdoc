@@ -255,7 +255,7 @@ nest-doc <query> --guide      force guide
 nest-doc <query> --api        force symbol
 nest-doc <query> --js         JavaScript code samples
 nest-doc --all <package>      include non-public exports
-nest-doc update               refresh guide corpus (only networked command)
+nest-doc update               refresh guide corpus into $XDG_DATA_HOME/getnestdoc/<version>/ (only networked command)
 nest-doc --clear-cache
 nest-doc --version
 nest-doc --help
@@ -303,6 +303,7 @@ Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the sym
 |---|---|
 | `NO_COLOR` | disable ANSI, any value |
 | `XDG_CACHE_HOME` | cache location |
+| `XDG_DATA_HOME` | where `nest-doc update` stores a refreshed guide corpus (ADR-0013) |
 | `FORCE_COLOR` | force ANSI when not a TTY |
 
 When `!process.stdout.isTTY`, colour is off and width is 80 regardless of `columns`.

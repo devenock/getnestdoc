@@ -9,6 +9,7 @@ import { getCacheDir, getCacheFilePath } from "../src/core/cache/paths.ts";
 import { CACHE_FORMAT_VERSION, readCache, writeCache } from "../src/core/cache/store.ts";
 import type { CacheFile } from "../src/core/cache/store.ts";
 import { resolvePackageSymbols } from "../src/nest/symbols.ts";
+import { isolatedEnv } from "./helpers/env.ts";
 
 const FIXTURES_ROOT = fileURLToPath(new URL("./fixtures", import.meta.url));
 const BIN = fileURLToPath(new URL("../dist/nest-doc.mjs", import.meta.url));
@@ -140,7 +141,7 @@ test("a read-only cache directory: the real binary still exits 0 for a symbol lo
     const result = spawnSync(process.execPath, [BIN, "common.Injectable"], {
       encoding: "utf8",
       cwd: FIXTURES_ROOT,
-      env: { ...process.env, XDG_CACHE_HOME: cacheDir },
+      env: isolatedEnv({ XDG_CACHE_HOME: cacheDir }),
     });
     assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
     assert.match(result.stdout, /Injectable/);

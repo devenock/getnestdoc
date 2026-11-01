@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isolatedEnv } from "../helpers/env.ts";
 
 const BIN = fileURLToPath(new URL("../../dist/nest-doc.mjs", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -12,7 +13,7 @@ const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 function run(args: string[], cwd = REPO_ROOT) {
   const cacheDir = mkdtempSync(join(tmpdir(), "getnestdoc-queries-cache-"));
   try {
-    return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: { ...process.env, XDG_CACHE_HOME: cacheDir } });
+    return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: isolatedEnv({ XDG_CACHE_HOME: cacheDir }) });
   } finally {
     rmSync(cacheDir, { recursive: true, force: true });
   }
@@ -165,7 +166,7 @@ test("a dotted query that is itself an installed package name still resolves as 
 function runKeepingCache(args: string[], cwd: string): { status: number | null; stderr: string; cached: string[] } {
   const cacheHome = mkdtempSync(join(tmpdir(), "getnestdoc-queries-cache-"));
   try {
-    const result = spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: { ...process.env, XDG_CACHE_HOME: cacheHome } });
+    const result = spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: isolatedEnv({ XDG_CACHE_HOME: cacheHome }) });
     const cacheDir = join(cacheHome, "getnestdoc");
     return { status: result.status, stderr: result.stderr, cached: existsSync(cacheDir) ? readdirSync(cacheDir).sort() : [] };
   } finally {
@@ -239,4 +240,31 @@ test("a bare symbol the installed version doesn't export says so (exit 1), not \
       assert.match(result.stderr, /^"JwtService" is exported by @nestjs\/jwt, but not by the 1\.0\.0 installed here\.$/m);
     },
   );
+});
+
+// `nest-doc update` used to write into the package's own data/ directory: EACCES (exit 4, stack trace) for a
+// root-owned global install — verified — and silently discarded by the next reinstall. ADR-0013: it writes to
+// $XDG_DATA_HOME/getnestdoc/<tool version>/, which guide lookups prefer when both files are there.
+test("guide lookups prefer an updated corpus in the per-user, per-version data directory", async () => {
+  const { version } = (await import("../../package.json", { with: { type: "json" } })).default;
+  const dataHome = mkdtempSync(join(tmpdir(), "getnestdoc-data-home-"));
+  try {
+    const guides = JSON.parse(readFileSync(join(REPO_ROOT, "data", "guides.json"), "utf8"));
+    guides.guides.interceptors.tokens = [{ type: "paragraph", text: "UPDATED CORPUS", tokens: [{ type: "text", text: "UPDATED CORPUS" }] }];
+    const env = (versionDir: string, files: string[]) => {
+      rmSync(join(dataHome, "getnestdoc"), { recursive: true, force: true });
+      const dir = join(dataHome, "getnestdoc", versionDir);
+      mkdirSync(dir, { recursive: true });
+      if (files.includes("guides")) writeFileSync(join(dir, "guides.json"), JSON.stringify(guides));
+      if (files.includes("aliases")) copyFileSync(join(REPO_ROOT, "data", "aliases.json"), join(dir, "aliases.json"));
+      return { ...isolatedEnv(), XDG_DATA_HOME: dataHome };
+    };
+    const lookup = (e: NodeJS.ProcessEnv) => spawnSync(process.execPath, [BIN, "interceptors"], { encoding: "utf8", env: e }).stdout;
+
+    assert.match(lookup(env(version, ["guides", "aliases"])), /^UPDATED CORPUS$/m, "this version's update should be used");
+    assert.doesNotMatch(lookup(env(version, ["guides"])), /UPDATED CORPUS/, "a half-written pair must fall back to the release corpus");
+    assert.doesNotMatch(lookup(env("0.0.0-older", ["guides", "aliases"])), /UPDATED CORPUS/, "another version's update must not shadow this release");
+  } finally {
+    rmSync(dataHome, { recursive: true, force: true });
+  }
 });
