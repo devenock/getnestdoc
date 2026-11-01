@@ -3,7 +3,7 @@ import type { SymbolRecord } from "../core/extract/types.ts";
 import { own } from "../core/own.ts";
 import { getCacheDir } from "../core/cache/paths.ts";
 import { readCache, writeCache } from "../core/cache/store.ts";
-import { describeUnusablePackage, resolveEntryTypes } from "../core/resolve/entry-types.ts";
+import { describeInvalidManifest, describeUnusablePackage, resolveEntryTypes } from "../core/resolve/entry-types.ts";
 import { findPackageDir } from "../core/resolve/find-package.ts";
 import { expandPackageShorthand } from "./package-scope.ts";
 import { loadBundledPackages } from "./bundled-packages.ts";
@@ -25,6 +25,7 @@ export async function resolvePackageSymbols(rawName: string, startDir: string): 
   const packageName = expandPackageShorthand(rawName);
   const found = findPackageDir(packageName, startDir);
   if (!found) return { status: "not-installed", packageName };
+  if (found.manifestError) return { status: "unusable", message: describeInvalidManifest(packageName, found.manifestError) };
 
   const entryResolution = resolveEntryTypes(found);
   if (!entryResolution.found) {

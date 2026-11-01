@@ -15,11 +15,13 @@ export type PackageManifest = {
   exports?: string | Record<string, string | ExportsCondition>;
 };
 
+// `manifestError` is set when package.json exists but isn't a readable JSON object; `manifest` is then empty.
 export type FoundPackage = {
   name: string;
   packageDir: string;
   nodeModulesDir: string;
   manifest: PackageManifest;
+  manifestError?: string;
 };
 
 type EntryResolutionCase = 1 | 2 | 3 | 4;

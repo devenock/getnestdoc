@@ -17,6 +17,11 @@ export function describeUnusablePackage(name: string): string {
   return `"${name}" is installed but ships no type declarations. Try \`npm i -D @types/${flattenScopedName(name)}\`.`;
 }
 
+// Message shown when a package is found but its package.json can't be used at all.
+export function describeInvalidManifest(name: string, reason: string): string {
+  return `"${name}" is installed but its ${reason}. Try reinstalling it.`;
+}
+
 // Resolves a package's .d.ts entry point by trying four cases in order: explicit types field, exports-map types condition, exports/main sibling inference, then a @types/* fallback.
 export function resolveEntryTypes(found: FoundPackage): EntryResolution {
   const { manifest, packageDir } = found;

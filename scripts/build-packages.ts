@@ -81,6 +81,11 @@ async function main(): Promise<void> {
         continue;
       }
 
+      if (found.manifestError) {
+        skipped.push(`${packageName}: ${found.manifestError}`);
+        continue;
+      }
+
       const entry = resolveEntryTypes(found);
       if (!entry.found) {
         skipped.push(`${packageName}: no usable type declarations found`);
