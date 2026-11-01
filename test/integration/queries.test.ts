@@ -177,10 +177,18 @@ function runKeepingCache(args: string[], cwd: string): { status: number | null; 
 // Every bare-word miss runs the installed-package scan, and it used to cold-extract every installed @nestjs/* package
 // (measured ~460 ms for the five fixtures — a typo blew the 150 ms budget three times over).
 test("a bare-word miss skips installed packages already covered by the bundled index at the same version", () => {
-  const result = runKeepingCache(["Xyzzy"], FIXTURES_ROOT);
-  assert.equal(result.status, 1);
-  // common@12.0.1, core@12.0.1, swagger@12.0.1 match data/packages.json exactly; common-10/common-11 aren't bundled.
-  assert.deepEqual(result.cached, ["@nestjs+common-10@10.4.22.json", "@nestjs+common-11@11.2.3.json"]);
+  const bundled = JSON.parse(readFileSync(join(REPO_ROOT, "data", "packages.json"), "utf8")) as { packages: Record<string, { packageVersion: string }> };
+  const bundledCommon = bundled.packages["@nestjs/common"]!.packageVersion;
+  const pkg = (name: string, version: string) => ({
+    [`node_modules/${name}/package.json`]: JSON.stringify({ name, version, types: "index.d.ts" }),
+    [`node_modules/${name}/index.d.ts`]: "export declare const placeholder: 1;\n",
+  });
+  withScratchProject({ ...pkg("@nestjs/common", bundledCommon), ...pkg("@nestjs/core", "99.0.0") }, (projectDir) => {
+    const result = runKeepingCache(["Xyzzy"], projectDir);
+    assert.equal(result.status, 1);
+    // common matches data/packages.json exactly, so the index already answers for it; core@99 isn't what was bundled.
+    assert.deepEqual(result.cached, ["@nestjs+core@99.0.0.json"]);
+  });
 });
 
 test("a name only an installed newer version exports is still found by the scan", () => {

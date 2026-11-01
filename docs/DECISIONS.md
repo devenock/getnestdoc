@@ -390,7 +390,7 @@ Building this surfaced a real, separate bug in the extraction engine itself: `@n
 
 ### Consequences
 
-- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped; 840 KB / 96 KB after the 2026-11-01 re-extraction with overload merging, ADR-0011) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
+- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped; 983 KB / 124 KB after the 2026-11-01 refresh to the latest releases with overloads merged, dependency re-exports followed, and subpath entry points bundled) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
 - Loaded lazily — only inside the not-installed fallback branch, never on the hot path. Benchmarked directly: `nest-doc interceptors` (150 ms budget) still runs at ~52 ms median, and the bundled-fallback path itself (`nest-doc @nestjs/throttler`, nothing installed) runs at ~60 ms median, ~105 ms p95 — comfortably inside budget.
 - Bundled data is pinned to whatever was live on npm at the time `build-packages.ts` last ran — the same relationship Go has between your installed toolchain version and the stdlib docs it shows you. Refreshed on `getnestdoc` releases, not on every `nest-doc update` (which stays guide-only, per its own contract of being the only networked command run by users).
 - `scripts/build-names.ts` is deleted; `build:names` in `package.json` is now `build:packages`.

@@ -17,8 +17,8 @@ A single global npm package. One binary. Data that ships inside the package, plu
 │  dist/nest-doc.mjs     190 KB   bundled CLI                      │
 │  data/guides.json      4.0 MB   pre-tokenised guide corpus       │
 │  data/aliases.json       7 KB   URL → guide slug table           │
-│  data/names.json        50 KB   bare symbol name → package(s)    │
-│  data/packages.json    840 KB   bundled @nestjs/* symbols        │
+│  data/names.json        60 KB   bare symbol name → package(s)    │
+│  data/packages.json    983 KB   bundled @nestjs/* symbols        │
 └──────────────────────────────────────────────────────────────────┘
                               │
                     reads at runtime
@@ -157,7 +157,7 @@ One positional argument carries five possible meanings. Resolution order (SPEC.m
 7. miss                        → exit 1 with suggestions
 ```
 
-`--guide` short-circuits to steps 1–2; `--api` to 3–5; the two together are a usage error (exit 2). Guides win ties *silently* — a bare word that could be either resolves to the guide by default (`nest-doc Module` → the guide; `--api` forces the decorator), because steps 1–2 run before 3–5 and simply match first. This isn't the same thing as ADR-0007's "ambiguous" case, which is narrower and concrete: a bare name that maps to *more than one package* in the name index (`data/names.json`) — that's the one case that prints every option and exits 1 rather than guessing, per SPEC.md §2b. Verified against the real shipped index (37 packages, 1229 names): 36 real collisions today (e.g. `PartialType`, exported by `@nestjs/graphql`, `@nestjs/mapped-types`, and `@nestjs/swagger` alike) — this path fires for real queries, not just in theory.
+`--guide` short-circuits to steps 1–2; `--api` to 3–5; the two together are a usage error (exit 2). Guides win ties *silently* — a bare word that could be either resolves to the guide by default (`nest-doc Module` → the guide; `--api` forces the decorator), because steps 1–2 run before 3–5 and simply match first. This isn't the same thing as ADR-0007's "ambiguous" case, which is narrower and concrete: a bare name that maps to *more than one package* in the name index (`data/names.json`) — that's the one case that prints every option and exits 1 rather than guessing, per SPEC.md §2b. Verified against the real shipped index (37 packages plus 6 subpath entry points, 1440 names): 45 real collisions today (e.g. `PartialType`, exported by `@nestjs/graphql`, `@nestjs/mapped-types`, and `@nestjs/swagger` alike; `FileInterceptor`, in both `platform-express` and, since 12.3, `platform-fastify`) — this path fires for real queries, not just in theory.
 
 Query classification also has to decide, ahead of all of this, whether a dotted query is a package.symbol pair (step 4) before falling through to steps 3/5 — checked first and independent of a leading `@`, since `@nestjs/swagger.ApiProperty` and `common.Injectable` are the same shape. The split point is the *last* `.`, not the first: `platform-socket.io` is a real published package name (and a real shorthand-table entry) with a literal `.` in it, so `@nestjs/platform-socket.io.SomeExport` must keep the whole thing before the last dot as the package.
 
