@@ -70,6 +70,9 @@ async function renderBareSymbolQuery(name: string, dataDir: string, cwd: string,
 
 export function createProgram(dataDir: string): Command {
   const program = new Command();
+  // Throw instead of exiting, so main.ts can map usage errors to exit 2. Must precede `.command("update")` below:
+  // commander copies this setting into a subcommand only when the subcommand is created.
+  program.exitOverride();
 
   program
     .name("nest-doc")

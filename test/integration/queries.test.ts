@@ -104,3 +104,13 @@ test("--guide and --api together are a usage error (exit 2), not a false miss", 
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /cannot be used with/);
 });
+
+// exitOverride() was applied after the `update` subcommand was created, and commander only copies it into
+// subcommands at creation — so `update`'s usage errors exited 1 ("not found") instead of 2.
+test("usage errors on the update subcommand exit 2, like the root command's", () => {
+  for (const args of [["update", "--bogus"], ["update", "extra-arg"]]) {
+    const result = run(args);
+    assert.equal(result.status, 2, `nest-doc ${args.join(" ")}: expected exit 2, got ${result.status}. stderr: ${result.stderr}`);
+    assert.doesNotMatch(result.stdout, /Fetching/, "must fail before any network access");
+  }
+});
