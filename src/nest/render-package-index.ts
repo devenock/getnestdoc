@@ -33,6 +33,25 @@ function truncate(text: string, width: number): string {
   return `${text.slice(0, Math.max(0, width - 1))}…`;
 }
 
+// Narrowest the right-hand column may get before the left column is capped instead.
+const MIN_RIGHT_COLUMN = 16;
+
+// Two aligned columns indented two: `left` padded to a shared column width, `right` truncated to what's left. The
+// column width is the widest left entry plus four, capped so `right` keeps MIN_RIGHT_COLUMN at narrow terminals; an
+// entry wider than the cap puts `right` on its own line under the column. Only an identifier or command longer than
+// the whole terminal can still overflow — breaking it would make it uncopyable.
+function columnRows(rows: { left: string; right: string }[], width: number): string[] {
+  const natural = Math.max(...rows.map((r) => r.left.length)) + 4;
+  const colWidth = Math.min(natural, Math.max(8, width - 2 - MIN_RIGHT_COLUMN));
+  const rightWidth = Math.max(1, width - 2 - colWidth);
+
+  return rows.flatMap(({ left, right }) => {
+    const summary = right ? truncate(right, rightWidth) : "";
+    if (left.length + 2 <= colWidth) return [`  ${left.padEnd(colWidth)}${summary}`.replace(/\s+$/, "")];
+    return summary ? [`  ${left}`, `  ${" ".repeat(colWidth)}${summary}`] : [`  ${left}`];
+  });
+}
+
 // A package with zero `@publicApi` tags isn't a package with zero public symbols, so `all` is forced on rather than showing an empty index.
 export function renderPackageIndex(packageName: string, packageVersion: string, symbols: SymbolRecord[], all: boolean, options: RenderOptions): string {
   const publicCount = symbols.filter((s) => s.isPublicApi).length;
@@ -54,22 +73,21 @@ export function renderPackageIndex(packageName: string, packageVersion: string, 
     if (!entries || entries.length === 0) continue;
 
     entries.sort((a, b) => a.name.localeCompare(b.name));
-    const nameColWidth = Math.max(...entries.map((e) => e.name.length)) + 4;
-
     lines.push(BUCKET_LABELS[bucket]);
-    for (const entry of entries) {
-      const summary = entry.doc ? truncate(firstSentence(entry.doc), Math.max(1, options.width - 2 - nameColWidth)) : "";
-      lines.push(`  ${entry.name.padEnd(nameColWidth)}${summary}`.replace(/\s+$/, ""));
-    }
+    lines.push(...columnRows(entries.map((e) => ({ left: e.name, right: e.doc ? firstSentence(e.doc) : "" })), options.width));
     lines.push("");
   }
 
   const shorthand = shorthandFor(packageName);
-  const allHint = `nest-doc --all ${packageName}`;
-  const detailHint = `nest-doc ${shorthand}.<name>`;
-  const hintColWidth = Math.max(allHint.length, detailHint.length) + 4;
-  lines.push(`  ${allHint.padEnd(hintColWidth)}include non-public exports`);
-  lines.push(`  ${detailHint.padEnd(hintColWidth)}detail for one symbol`);
+  lines.push(
+    ...columnRows(
+      [
+        { left: `nest-doc --all ${packageName}`, right: "include non-public exports" },
+        { left: `nest-doc ${shorthand}.<name>`, right: "detail for one symbol" },
+      ],
+      options.width,
+    ),
+  );
 
   return lines.join("\n").replace(/\n+$/, "");
 }

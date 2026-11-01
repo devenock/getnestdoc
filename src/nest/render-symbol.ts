@@ -82,7 +82,7 @@ export function renderSymbol(
   if (symbol.doc) {
     lines.push(...renderDocBody(symbol.doc, options));
   } else {
-    lines.push(`    ${NO_DOC_LINE}`);
+    lines.push(...wrapText(NO_DOC_LINE, Math.max(1, options.width - 4)).map((l) => `    ${l}`));
   }
   lines.push("");
 

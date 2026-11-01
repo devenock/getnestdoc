@@ -130,3 +130,23 @@ test("the package index summary is the first prose sentence, never a code exampl
     { kind: "code", code: "x();" },
   ]);
 });
+
+// Width is floored at 40 (ARCHITECTURE.md §7), and at 40 the package index padded every row to its bucket's longest
+// name and the fixed "No documentation" line didn't wrap — 2314 over-width lines across the bundled scope. Only a
+// single unbreakable token (an identifier or a runnable `nest-doc …` command) may still exceed it.
+test("at the minimum width of 40, every over-width line is one unbreakable identifier or command", async () => {
+  const { loadBundledPackages } = await import("../src/nest/bundled-packages.ts");
+  const packages = loadBundledPackages(REPO_DATA).packages;
+  const width = 40;
+  const offenders: string[] = [];
+  for (const [name, entry] of Object.entries(packages)) {
+    const outputs = [renderPackageIndex(name, entry.packageVersion, entry.symbols, true, { width, color: false })];
+    for (const symbol of entry.symbols) outputs.push(renderSymbol(name, entry.packageVersion, symbol, guidesFile, aliasFile, { width, color: false }));
+    for (const line of outputs.flatMap((o) => o.split("\n"))) {
+      if (line.length <= width) continue;
+      const token = line.trim();
+      if (!/^\S+$/.test(token) && !/^nest-doc (--all )?\S+$/.test(token)) offenders.push(`${name}: ${JSON.stringify(line)}`);
+    }
+  }
+  assert.deepEqual(offenders.slice(0, 5), [], `${offenders.length} wrappable lines exceed ${width}`);
+});
