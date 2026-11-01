@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -193,6 +193,24 @@ test("a name only an installed newer version exports is still found by the scan"
       assert.equal(result.status, 0, `stderr: ${result.stderr}`);
       assert.match(result.stdout, /^@nestjs\/common@99\.0\.0$/m);
       assert.match(result.stdout, /function BrandNewDecorator\(\): ClassDecorator/);
+    },
+  );
+});
+
+// pnpm (and workspaces, `npm link`) install node_modules/@nestjs/<pkg> as a symlink; the scan filtered on
+// Dirent.isDirectory(), which is false for a symlink, so a name only the installed version exports was never found.
+test("the fallback scan also covers symlinked packages (pnpm layout)", () => {
+  withScratchProject(
+    {
+      "store/common/package.json": JSON.stringify({ name: "@nestjs/common", version: "99.0.0", types: "index.d.ts" }),
+      "store/common/index.d.ts": "export declare function LinkedOnly(): ClassDecorator;\n",
+    },
+    (projectDir) => {
+      mkdirSync(join(projectDir, "node_modules", "@nestjs"), { recursive: true });
+      symlinkSync(join(projectDir, "store", "common"), join(projectDir, "node_modules", "@nestjs", "common"));
+      const result = run(["LinkedOnly"], projectDir);
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.match(result.stdout, /function LinkedOnly\(\): ClassDecorator/);
     },
   );
 });

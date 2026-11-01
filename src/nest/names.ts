@@ -30,8 +30,10 @@ function listInstalledNestPackages(startDir: string): string[] {
   while (true) {
     const scopeDir = join(dir, "node_modules", "@nestjs");
     if (existsSync(scopeDir)) {
+      // Symlinks count: pnpm, workspaces, and `npm link` install every package as one, and a Dirent for a symlink
+      // reports isDirectory() false even when it points at a package directory.
       return readdirSync(scopeDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
         .map((entry) => `@nestjs/${entry.name}`);
     }
     if (existsSync(join(dir, ".git"))) return [];
