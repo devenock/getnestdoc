@@ -50,7 +50,8 @@ function columnRows(rows: { left: string; right: string }[], width: number): str
 }
 
 // A package with zero `@publicApi` tags isn't a package with zero public symbols, so `all` is forced on rather than showing an empty index.
-export function renderPackageIndex(packageName: string, packageVersion: string, symbols: SymbolRecord[], all: boolean, options: RenderOptions): string {
+// `entryPoints` are the subpaths the package names explicitly (`multipart` for @nestjs/platform-fastify), listed as runnable lookups.
+export function renderPackageIndex(packageName: string, packageVersion: string, symbols: SymbolRecord[], all: boolean, options: RenderOptions, entryPoints: string[] = []): string {
   const publicCount = symbols.filter((s) => s.isPublicApi).length;
   const effectiveAll = all || publicCount === 0;
   const visible = effectiveAll ? symbols : symbols.filter((s) => s.isPublicApi);
@@ -76,6 +77,9 @@ export function renderPackageIndex(packageName: string, packageVersion: string, 
   }
 
   const shorthand = shorthandFor(packageName);
+  if (entryPoints.length > 0) {
+    lines.push("ENTRY POINTS", ...entryPoints.map((entry) => `  nest-doc ${shorthand}/${entry}`), "");
+  }
   lines.push(
     ...columnRows(
       [

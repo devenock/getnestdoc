@@ -249,6 +249,7 @@ Same exit code and stream. The one exception: if the whole query is itself a res
 ```
 nest-doc <query>              lookup, auto-detected
 nest-doc <guide>#<anchor>     one section of a guide (ADR-0012)
+nest-doc <package>/<subpath>  a subpath entry point, e.g. @nestjs/platform-fastify/multipart (ADR-0014)
 nest-doc @Get                 decorator lookup
 nest-doc Get                  bare symbol lookup
 nest-doc <query> --guide      force guide
@@ -284,6 +285,8 @@ nest-doc --help
 A scoped package (step 3) or a recognised shorthand (`common`, `throttler`, and the rest of the official `@nestjs/*` scope) that resolves to a real package name falls back to `data/packages.json` (ADR-0010) when not installed, rendering real bundled docs with a note naming the bundled version — not installed *and* not part of the official scope prints `"<package>" isn't installed here. Try \`npm i <package>\`.` and exits 0, a known, actionable outcome, not a miss. Either way this is never a hard error. An unrecognised bare word still falls through to step 6.
 
 Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the symbol.
+
+A package query may carry a subpath (`@nestjs/common/internal`, shorthand `common/internal`), resolved through the package's `exports` map by Node's rules (ADR-0014); `package/subpath.Symbol` works the same way. A subpath the installed package doesn't export is a miss: `<pkg>@<v> has no "./<subpath>" entry point.`, listing the ones it does name, exit 1. A root package index lists its named entry points under `ENTRY POINTS`.
 
 `--guide` restricts to 1–2, `--api` to 3–5. The two are mutually exclusive: passing both is a usage error, exit 2. A bare word matching both a guide and a symbol is *not* ambiguous — the guide wins, per the tie rule above; the only ambiguous case is a bare symbol name exported by several packages (§2b), which lists them and exits 1.
 

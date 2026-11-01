@@ -277,3 +277,64 @@ test("a symlink inside the package pointing outside it is not followed as the en
     rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("subpath entry points resolve through the exports map: exact key, then the longest * pattern, contained in the package", async () => {
+  const { resolveSubpathTypes, listEntryPoints } = await import("../src/core/resolve/entry-types.ts");
+  const { tmp, pkgDir } = resolveScratch(
+    {
+      exports: {
+        ".": "./index.js",
+        "./multipart": { types: "./multipart/index.d.ts", default: "./multipart/index.js" },
+        "./internal": "./internal/index.js",
+        "./deep/*": "./lib/*.js",
+        "./*": "./*.js",
+        "./escape": { types: "../../outside.d.ts" },
+        "./package.json": "./package.json",
+      },
+    },
+    { "index.d.ts": "", "multipart/index.d.ts": "", "internal/index.d.ts": "", "lib/thing.d.ts": "", "top.d.ts": "" },
+  );
+  try {
+    writeFileSync(join(tmp, "outside.d.ts"), "");
+    const found = findPackageDir("shape", tmp)!;
+    const entry = (sub: string) => {
+      const r = resolveSubpathTypes(found, sub);
+      return r.found ? r.entryFile.slice(pkgDir.length + 1) : undefined;
+    };
+    assert.equal(entry("multipart"), "multipart/index.d.ts");
+    assert.equal(entry("internal"), "internal/index.d.ts");
+    assert.equal(entry("deep/thing"), "lib/thing.d.ts", "longest-prefix pattern wins over ./*");
+    assert.equal(entry("top"), "top.d.ts");
+    assert.equal(entry("nope"), undefined);
+    assert.equal(entry("escape"), undefined, "a subpath target outside the package is never an entry");
+    assert.deepEqual(listEntryPoints(found.manifest), ["escape", "internal", "multipart"], "explicit keys only — no patterns, no ./package.json");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("without an exports map, a subpath is the legacy deep path beside the package root", async () => {
+  const { resolveSubpathTypes } = await import("../src/core/resolve/entry-types.ts");
+  const { tmp, pkgDir } = resolveScratch({ main: "./index.js" }, { "index.d.ts": "", "dist/plugin.d.ts": "", "tools/index.d.ts": "" });
+  try {
+    const found = findPackageDir("shape", tmp)!;
+    const r1 = resolveSubpathTypes(found, "dist/plugin");
+    const r2 = resolveSubpathTypes(found, "tools");
+    assert.ok(r1.found && r1.entryFile === join(pkgDir, "dist/plugin.d.ts"));
+    assert.ok(r2.found && r2.entryFile === join(pkgDir, "tools/index.d.ts"));
+    assert.equal(resolveSubpathTypes(found, "../../etc").found, false);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("shorthand expansion and its inverse carry a subpath", async () => {
+  const { expandPackageShorthand, shorthandFor } = await import("../src/nest/package-scope.ts");
+  assert.equal(expandPackageShorthand("platform-fastify/multipart"), "@nestjs/platform-fastify/multipart");
+  assert.equal(expandPackageShorthand("lodash/fp"), "lodash/fp");
+  assert.equal(shorthandFor("@nestjs/platform-fastify/multipart"), "platform-fastify/multipart");
+  const { splitModuleSpecifier } = await import("../src/core/resolve/specifier.ts");
+  assert.deepEqual(splitModuleSpecifier("@nestjs/common/internal"), { packageName: "@nestjs/common", subpath: "internal" });
+  assert.deepEqual(splitModuleSpecifier("lodash/fp/map"), { packageName: "lodash", subpath: "fp/map" });
+  assert.deepEqual(splitModuleSpecifier("@nestjs/common"), { packageName: "@nestjs/common" });
+});

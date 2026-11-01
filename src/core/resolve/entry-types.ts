@@ -98,3 +98,58 @@ export function resolveEntryTypes(found: FoundPackage): EntryResolution {
 
   return { found: false };
 }
+
+// The exports-map target for "./<subpath>", by Node's rules: an exact key wins, else the "*" pattern with the longest prefix, its match substituted into the target.
+function subpathExportTarget(exportsField: unknown, subpath: string): unknown {
+  if (exportsField === null || typeof exportsField !== "object" || Array.isArray(exportsField)) return undefined;
+  const map = exportsField as Record<string, unknown>;
+  const key = `./${subpath}`;
+  if (Object.hasOwn(map, key)) return map[key];
+
+  let best: { prefix: string; target: unknown; match: string } | undefined;
+  for (const [pattern, target] of Object.entries(map)) {
+    const star = pattern.indexOf("*");
+    if (star === -1 || pattern.indexOf("*", star + 1) !== -1) continue;
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (key.length < prefix.length + suffix.length || !key.startsWith(prefix) || !key.endsWith(suffix)) continue;
+    if (!best || prefix.length > best.prefix.length) best = { prefix, target, match: key.slice(prefix.length, key.length - suffix.length) };
+  }
+  if (!best) return undefined;
+  const substitute = (value: unknown): unknown =>
+    typeof value === "string" ? value.split("*").join(best!.match)
+    : Array.isArray(value) ? value.map(substitute)
+    : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, substitute(v)]))
+    : value;
+  return substitute(best.target);
+}
+
+// Resolves the .d.ts for a subpath entry point (`@nestjs/platform-fastify/multipart`): through the exports map when there is one — which, as in Node, then bounds what's importable — else the legacy deep path beside the package root.
+export function resolveSubpathTypes(found: FoundPackage, subpath: string): EntryResolution {
+  const { manifest, packageDir } = found;
+  if (manifest.exports !== undefined) {
+    const candidates: ExportCandidate[] = [];
+    collectExportCandidates(subpathExportTarget(manifest.exports, subpath), false, candidates);
+    for (const { path } of candidates.filter((c) => c.isTypes)) {
+      const candidate = fileAt(packageDir, path);
+      if (candidate) return { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 2 };
+    }
+    for (const { path } of candidates.filter((c) => !c.isTypes)) {
+      const candidate = siblingDts(packageDir, path);
+      if (candidate) return { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 3 };
+    }
+    return { found: false };
+  }
+  const candidate = siblingDts(packageDir, `./${subpath}`);
+  return candidate ? { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 3 } : { found: false };
+}
+
+// The subpath entry points a package names explicitly in its exports map ("./multipart" -> "multipart"); "*" patterns and ./package.json are open-ended or not code, so they aren't listed.
+export function listEntryPoints(manifest: FoundPackage["manifest"]): string[] {
+  const exportsField = manifest.exports;
+  if (exportsField === null || typeof exportsField !== "object" || Array.isArray(exportsField)) return [];
+  return Object.keys(exportsField)
+    .filter((key) => key.startsWith("./") && !key.includes("*") && key !== "./package.json")
+    .map((key) => key.slice(2))
+    .sort();
+}

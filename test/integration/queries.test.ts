@@ -298,3 +298,43 @@ test("a globally installed package is found via the node_modules nest-doc itself
     rmSync(prefix, { recursive: true, force: true });
   }
 });
+
+// Named subpath entry points (Nest 12's @nestjs/platform-fastify/multipart, @nestjs/common/internal, the swagger and
+// graphql ./plugin) were unreachable: `nest-doc @nestjs/platform-fastify/multipart` claimed the package wasn't installed.
+test("subpath entry points: index, symbol, shorthand, listing on the root index, and a miss for an undeclared one", () => {
+  withScratchProject(
+    {
+      "node_modules/@nestjs/platform-fastify/package.json": JSON.stringify({
+        name: "@nestjs/platform-fastify",
+        version: "12.9.0",
+        exports: { ".": "./index.js", "./multipart": "./multipart/index.js", "./*": "./*.js", "./package.json": "./package.json" },
+      }),
+      "node_modules/@nestjs/platform-fastify/index.d.ts": "export declare class FastifyAdapter {}\n",
+      "node_modules/@nestjs/platform-fastify/multipart/index.d.ts": "/** Uploads one file. @publicApi */\nexport declare function FileStreamInterceptor(field: string): unknown;\n",
+    },
+    (projectDir) => {
+      const index = run(["@nestjs/platform-fastify/multipart"], projectDir);
+      assert.equal(index.status, 0, index.stderr);
+      assert.match(index.stdout, /^@nestjs\/platform-fastify\/multipart@12\.9\.0$/m);
+      assert.match(index.stdout, /FileStreamInterceptor\s+Uploads one file\./);
+
+      const symbol = run(["platform-fastify/multipart.FileStreamInterceptor"], projectDir);
+      assert.equal(symbol.status, 0, symbol.stderr);
+      assert.match(symbol.stdout, /function FileStreamInterceptor\(field: string\): unknown/);
+
+      const root = run(["@nestjs/platform-fastify"], projectDir);
+      assert.match(root.stdout, /^ENTRY POINTS\n {2}nest-doc platform-fastify\/multipart$/m);
+
+      const miss = run(["@nestjs/platform-fastify/nope"], projectDir);
+      assert.equal(miss.status, 1);
+      assert.match(miss.stderr, /^@nestjs\/platform-fastify@12\.9\.0 has no "\.\/nope" entry point\.\n\nDid you mean\?\n {2}nest-doc platform-fastify\/multipart$/m);
+    },
+  );
+});
+
+test("a guide-path typo containing a slash still gets guide suggestions, not a bogus npm hint", () => {
+  const result = run(["fundamentals/custom-provider"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /nest-doc fundamentals\/custom-providers/);
+  assert.doesNotMatch(result.stdout + result.stderr, /npm i/);
+});

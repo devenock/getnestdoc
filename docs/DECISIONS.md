@@ -477,3 +477,27 @@ Scoping by tool version is what keeps upgrades correct: a newer release ships a 
 - After an upgrade, the release corpus is used until the user runs `update` again — the cost of never serving a corpus older than the one shipped.
 - Two `existsSync` calls on the guide path; no measurable latency.
 - `XDG_DATA_HOME` joins the environment table (SPEC.md §5). The test suite pins it to a nonexistent directory (`test/helpers/env.ts`) so a developer's own updated corpus can't leak into test runs.
+
+---
+
+## ADR-0014: Subpath entry points
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+Verifying against the latest Nest 10, 11, and 12 installs showed packages declaring named subpath entry points in their `exports` maps, each with its own public surface: `@nestjs/platform-fastify/multipart` (Nest 12's fastify file uploads, 20 exports), `@nestjs/common/internal` (84), `@nestjs/core/internal` (50), `@nestjs/websockets/internal` (14), and `./plugin` in `@nestjs/swagger` and `@nestjs/graphql`. None were reachable: `nest-doc @nestjs/platform-fastify/multipart` looked for a package directory literally named that and reported it as not installed. Nest 12 packages also declare `"./*"` patterns that map onto every internal file.
+
+### Decision
+
+A package query may carry a subpath. It resolves through the `exports` map by Node's own rules — an exact key, else the `*` pattern with the longest prefix — through the same types-first candidate walk and package containment as the root entry. A package without an `exports` map gets Node's legacy deep path (`<subpath>.d.ts`, `<subpath>/index.d.ts`); one *with* a map exposes only what the map lists, as in Node.
+
+- The whole specifier is the lookup key everywhere a package name was: cache filename, `packages.json`, `names.json` owners, displayed name.
+- Only **explicitly named** keys count as entry points: they're listed under `ENTRY POINTS` on the root package index, bundled for the official scope, and offered as suggestions. `"*"` patterns still resolve on request — `nest-doc @nestjs/common/pipes/validation.pipe` works — but they're "any internal file", not a list, so they're never enumerated or bundled.
+- A subpath the package doesn't export is a miss (exit 1) naming the entry points it does have — not "unusable" (the package is fine) and not "not installed" (it is).
+
+### Consequences
+
+- Every explicitly named entry point of the official scope is documented: verified with the TypeScript checker as an oracle, export for export, across all three majors.
+- The shorthand table applies to the first segment: `platform-fastify/multipart` → `@nestjs/platform-fastify/multipart`.
+- A bare word containing a slash that isn't a known package (`fundamentals/custom-provider`) is unaffected and still falls through to guide suggestions.

@@ -78,6 +78,8 @@ export async function resolveBareSymbol(name: string, dataDir: string, startDir:
   if (resolved.status === "not-installed") return { status: "not-installed", packageName, name };
   // Installed but unusable is a local problem to report as such, never "isn't installed".
   if (resolved.status === "unusable") return { status: "unusable", message: resolved.message };
+  // The name lives in a subpath entry point the installed version doesn't have yet.
+  if (resolved.status === "no-entry-point") return { status: "missing-from-installed", packageName, packageVersion: resolved.packageVersion, name };
 
   const symbol = resolved.result.symbols.find((s) => s.name === name);
   // The index says this package exports the name, but the installed version doesn't (older, or newer and removed).

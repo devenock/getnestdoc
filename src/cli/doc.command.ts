@@ -14,6 +14,7 @@ import { renderSymbol } from "../nest/render-symbol.ts";
 import { renderPackageIndex } from "../nest/render-package-index.ts";
 import { activeGuideDataDir, runUpdate } from "../nest/update.ts";
 import { shorthandFor } from "../nest/package-scope.ts";
+import { splitModuleSpecifier } from "../core/resolve/specifier.ts";
 import type { GuidesFile } from "../nest/guides/types.ts";
 import type { AliasFile } from "../nest/aliases.ts";
 import type { RenderOptions } from "../core/render/ansi.ts";
@@ -35,20 +36,45 @@ function classifyAtQuery(query: string): AtClassification {
   return { kind: "invalid" };
 }
 
-async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string, dataDir: string): Promise<{ output: string } | { error: string; exitCode: number } | { notInstalled: true; packageName: string } | undefined> {
+type IndexResult =
+  | { output: string }
+  | { error: string; exitCode: number }
+  | { notInstalled: true; packageName: string; installName: string }
+  | { miss: { headline: string; suggestions: string[] } };
+
+async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string, dataDir: string): Promise<IndexResult> {
   const resolved = await resolvePackageSymbolsOrBundled(packageQuery, cwd, dataDir);
-  if (resolved.status === "not-installed") return { notInstalled: true, packageName: resolved.packageName };
+  if (resolved.status === "not-installed") return { notInstalled: true, packageName: resolved.packageName, installName: resolved.installName };
   if (resolved.status === "unusable") return { error: resolved.message, exitCode: 3 };
-  const output = renderPackageIndex(resolved.result.packageName, resolved.result.packageVersion, resolved.result.symbols, all, options);
-  return { output: resolved.result.bundled ? `${output}\n\n${bundledNote(resolved.result.packageName, resolved.result.packageVersion)}` : output };
+  if (resolved.status === "no-entry-point") return { miss: noEntryPointMiss(resolved) };
+  const { packageName, packageVersion, symbols, entryPoints, bundled } = resolved.result;
+  const output = renderPackageIndex(packageName, packageVersion, symbols, all, options, entryPoints);
+  return { output: bundled ? `${output}\n\n${bundledNote(packageName, packageVersion)}` : output };
+}
+
+async function writeIndexResult(result: IndexResult): Promise<void> {
+  if ("notInstalled" in result) await writeOutput(notInstalledMessage(result.installName));
+  else if ("miss" in result) writeMiss(result.miss.headline, result.miss.suggestions);
+  else if ("error" in result) {
+    process.stderr.write(`${result.error}\n`);
+    process.exitCode = result.exitCode;
+  } else await writeOutput(result.output);
+}
+
+// The package is there but doesn't export that subpath; the suggestions are the entry points it does name.
+function noEntryPointMiss(r: { packageName: string; packageVersion: string; subpath: string; entryPoints: string[] }): { headline: string; suggestions: string[] } {
+  const shorthand = shorthandFor(r.packageName);
+  return { headline: `${r.packageName}@${r.packageVersion} has no "./${r.subpath}" entry point.`, suggestions: r.entryPoints.map((e) => `${shorthand}/${e}`) };
 }
 
 function notInstalledMessage(packageName: string): string {
   return `"${packageName}" isn't installed here. Try \`npm i ${packageName}\`.`;
 }
 
+// `npm i` takes the package, never a subpath of it.
 function bundledNote(packageName: string, packageVersion: string): string {
-  return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${packageName}\` to match your own version)`;
+  const installName = splitModuleSpecifier(packageName).packageName;
+  return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${installName}\` to match your own version)`;
 }
 
 // Writes a miss to stderr, so piped stdout stays empty, and exits 1.
@@ -173,6 +199,13 @@ export function createProgram(dataDir: string): Command {
               return;
             }
           }
+
+          // Same rule for a subpath the package doesn't export ("@nestjs/common/nope.Foo"), unless the whole query is a deep path that does resolve.
+          if (resolved.status === "no-entry-point" && (await resolvePackageSymbolsOrBundled(query, cwd, dataDir)).status !== "found") {
+            const miss = noEntryPointMiss(resolved);
+            writeMiss(miss.headline, miss.suggestions);
+            return;
+          }
         }
 
         if (query.startsWith("@")) {
@@ -190,18 +223,8 @@ export function createProgram(dataDir: string): Command {
           }
 
           if (classified.kind === "package") {
-            const result = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir);
-            if (result) {
-              if ("notInstalled" in result) {
-                await writeOutput(notInstalledMessage(result.packageName));
-              } else if ("error" in result) {
-                process.stderr.write(`${result.error}\n`);
-                process.exitCode = result.exitCode;
-              } else {
-                await writeOutput(result.output);
-              }
-              return;
-            }
+            await writeIndexResult(await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir));
+            return;
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {
@@ -213,16 +236,9 @@ export function createProgram(dataDir: string): Command {
           const indexResult = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir);
           // A recognised shorthand (e.g. "throttler" -> "@nestjs/throttler") that isn't installed gets the helpful
           // message below; an unrecognised bare word falls through to bare-symbol lookup and the suggestions below that.
-          const isUnrecognisedShorthand = indexResult && "notInstalled" in indexResult && indexResult.packageName === query;
-          if (indexResult && !isUnrecognisedShorthand) {
-            if ("notInstalled" in indexResult) {
-              await writeOutput(notInstalledMessage(indexResult.packageName));
-            } else if ("error" in indexResult) {
-              process.stderr.write(`${indexResult.error}\n`);
-              process.exitCode = indexResult.exitCode;
-            } else {
-              await writeOutput(indexResult.output);
-            }
+          const isUnrecognisedShorthand = "notInstalled" in indexResult && indexResult.packageName === query;
+          if (!isUnrecognisedShorthand) {
+            await writeIndexResult(indexResult);
             return;
           }
 

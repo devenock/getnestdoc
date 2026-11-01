@@ -60,6 +60,7 @@ Symbols resolve against **your** `node_modules`, so you get the version you actu
 $ nest-doc common.Injectable
 $ nest-doc @nestjs/core.Reflector
 $ nest-doc @nestjs/common        # everything the package exports
+$ nest-doc @nestjs/platform-fastify/multipart   # a subpath entry point
 ```
 
 Or skip the package name — type what you actually see in the code:

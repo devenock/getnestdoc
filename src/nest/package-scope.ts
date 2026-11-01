@@ -45,14 +45,16 @@ const OFFICIAL_SCOPE_NAMES = [
 
 const OFFICIAL_SCOPE = new Set<string>(OFFICIAL_SCOPE_NAMES);
 
-// Names not in the table pass through unchanged, treated as literal package names.
+// Names not in the table pass through unchanged, treated as literal package names; a subpath rides along ("platform-fastify/multipart").
 export function expandPackageShorthand(name: string): string {
-  return OFFICIAL_SCOPE.has(name) ? `@nestjs/${name}` : name;
+  const slash = name.indexOf("/");
+  const head = slash === -1 ? name : name.slice(0, slash);
+  return OFFICIAL_SCOPE.has(head) ? `@nestjs/${name}` : name;
 }
 
 // Inverse of the above, for display only — powers the package index's "nest-doc common.<name>" hint.
 export function shorthandFor(packageName: string): string {
-  const match = /^@nestjs\/(.+)$/.exec(packageName);
-  if (match && OFFICIAL_SCOPE.has(match[1]!)) return match[1]!;
+  const match = /^@nestjs\/([^/]+)(\/.*)?$/.exec(packageName);
+  if (match && OFFICIAL_SCOPE.has(match[1]!)) return `${match[1]!}${match[2] ?? ""}`;
   return packageName;
 }

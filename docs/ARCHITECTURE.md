@@ -194,6 +194,8 @@ node_modules/@types/<name-with-slashes-flattened>/index.d.ts
 
 Verified against `@nestjs/common@12.0.1`, which declares `"type": "module"`, an `exports` map, and **no `types` field at all**.
 
+A query with a subpath (`@nestjs/platform-fastify/multipart`) resolves the same way from `exports["./multipart"]` — exact key first, then the `*` pattern with the longest prefix — or, for a package with no `exports` map, from the legacy deep path beside the package root (ADR-0014).
+
 Every candidate from cases 1–3 must be a real file that resolves — by real path, so symlinks count — inside the package directory (ADR-0009); `EntryResolution.packageRoot` carries that directory on to extraction as its containment root. package.json itself is third-party input: a malformed file is reported as unusable (exit 3), and a wrongly-typed field is treated as absent.
 
 ---
