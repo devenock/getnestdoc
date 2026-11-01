@@ -21,6 +21,8 @@ export function loadNameIndex(dataDir: string): NameIndex {
 export type BareSymbolResolution =
   | { status: "found"; packageName: string; packageVersion: string; symbol: SymbolRecord; bundled?: true }
   | { status: "not-installed"; packageName: string; name: string }
+  | { status: "unusable"; message: string }
+  | { status: "missing-from-installed"; packageName: string; packageVersion: string; name: string }
   | { status: "ambiguous"; packageNames: string[] }
   | { status: "not-found" };
 
@@ -76,10 +78,13 @@ export async function resolveBareSymbol(name: string, dataDir: string, startDir:
 
   const packageName = owners[0]!;
   const resolved = await resolvePackageSymbolsOrBundled(packageName, startDir, dataDir);
-  if (resolved.status !== "found") return { status: "not-installed", packageName, name };
+  if (resolved.status === "not-installed") return { status: "not-installed", packageName, name };
+  // Installed but unusable is a local problem to report as such, never "isn't installed".
+  if (resolved.status === "unusable") return { status: "unusable", message: resolved.message };
 
   const symbol = resolved.result.symbols.find((s) => s.name === name);
-  if (!symbol) return { status: "not-installed", packageName, name };
+  // The index says this package exports the name, but the installed version doesn't (older, or newer and removed).
+  if (!symbol) return { status: "missing-from-installed", packageName, packageVersion: resolved.result.packageVersion, name };
 
   return { status: "found", packageName, packageVersion: resolved.result.packageVersion, symbol, ...(resolved.result.bundled ? { bundled: true } : {}) };
 }

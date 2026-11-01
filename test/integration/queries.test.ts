@@ -214,3 +214,29 @@ test("the fallback scan also covers symlinked packages (pnpm layout)", () => {
     },
   );
 });
+
+// resolveBareSymbol mapped every non-"found" outcome to "not-installed", so an installed package with no types, or
+// an installed version that doesn't export the name, both claimed the package "isn't installed here" and exited 0.
+test("a bare symbol whose package is installed but unusable reports that (exit 3), not \"isn't installed\"", () => {
+  withScratchProject({ "node_modules/@nestjs/throttler/package.json": JSON.stringify({ name: "@nestjs/throttler", version: "6.5.0", main: "index.js" }) }, (projectDir) => {
+    const result = run(["Throttle"], projectDir);
+    assert.equal(result.status, 3, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+    assert.match(result.stderr, /"@nestjs\/throttler" is installed but ships no type declarations/);
+    assert.doesNotMatch(result.stdout + result.stderr, /isn't installed/);
+  });
+});
+
+test("a bare symbol the installed version doesn't export says so (exit 1), not \"isn't installed\"", () => {
+  withScratchProject(
+    {
+      "node_modules/@nestjs/jwt/package.json": JSON.stringify({ name: "@nestjs/jwt", version: "1.0.0", types: "index.d.ts" }),
+      "node_modules/@nestjs/jwt/index.d.ts": "export declare class SomethingElse {}\n",
+    },
+    (projectDir) => {
+      const result = run(["JwtService"], projectDir);
+      assert.equal(result.status, 1, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /^"JwtService" is exported by @nestjs\/jwt, but not by the 1\.0\.0 installed here\.$/m);
+    },
+  );
+});

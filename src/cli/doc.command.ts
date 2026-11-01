@@ -68,15 +68,32 @@ function renderAmbiguous(name: string, packageNames: string[]): string {
   return lines.join("\n");
 }
 
-async function renderBareSymbolQuery(name: string, dataDir: string, cwd: string, guidesFile: GuidesFile, aliasFile: AliasFile, options: RenderOptions): Promise<{ output: string; exitCode: 0 | 1 } | undefined> {
+async function renderBareSymbolQuery(
+  name: string,
+  dataDir: string,
+  cwd: string,
+  guidesFile: GuidesFile,
+  aliasFile: AliasFile,
+  options: RenderOptions,
+): Promise<{ output: string; exitCode: 0 | 1 } | { error: string; exitCode: 1 | 3 } | undefined> {
   const resolved = await resolveBareSymbol(name, dataDir, cwd);
   if (resolved.status === "not-found") return undefined;
+  if (resolved.status === "unusable") return { error: resolved.message, exitCode: 3 };
+  if (resolved.status === "missing-from-installed") {
+    return { error: `"${resolved.name}" is exported by ${resolved.packageName}, but not by the ${resolved.packageVersion} installed here.`, exitCode: 1 };
+  }
   if (resolved.status === "ambiguous") return { output: renderAmbiguous(name, resolved.packageNames), exitCode: 1 };
   if (resolved.status === "not-installed") {
     return { output: `"${resolved.name}" is exported by ${resolved.packageName}, which isn't installed here. Try \`npm i ${resolved.packageName}\`.`, exitCode: 0 };
   }
   const output = renderSymbol(resolved.packageName, resolved.packageVersion, resolved.symbol, guidesFile, aliasFile, options);
   return { output: resolved.bundled ? `${output}\n\n${bundledNote(resolved.packageName, resolved.packageVersion)}` : output, exitCode: 0 };
+}
+
+async function writeBareResult(result: { output: string; exitCode: 0 | 1 } | { error: string; exitCode: 1 | 3 }): Promise<void> {
+  if ("error" in result) process.stderr.write(`${result.error}\n`);
+  else await writeOutput(result.output);
+  process.exitCode = result.exitCode;
 }
 
 export function createProgram(dataDir: string): Command {
@@ -189,8 +206,7 @@ export function createProgram(dataDir: string): Command {
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {
-              await writeOutput(bare.output);
-              process.exitCode = bare.exitCode;
+              await writeBareResult(bare);
               return;
             }
           }
@@ -213,8 +229,7 @@ export function createProgram(dataDir: string): Command {
 
           const bare = await renderBareSymbolQuery(query, dataDir, cwd, guidesFile, aliasFile, renderOptions);
           if (bare) {
-            await writeOutput(bare.output);
-            process.exitCode = bare.exitCode;
+            await writeBareResult(bare);
             return;
           }
         }
