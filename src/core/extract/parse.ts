@@ -14,68 +14,107 @@ export type DeclarationEntry = {
   node: TS.Node;
 };
 
+// A re-export the barrel walker follows. `names` maps the name in the target module to the name this file exports it as.
+export type ExportForward =
+  | { kind: "wildcard"; specifier: string }
+  | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };
+
+// Everything one file exports: its own declarations keyed by exported name (several entries means overloads or declaration merging), and re-exports to follow.
+export type FileExports = {
+  declarations: Map<string, DeclarationEntry[]>;
+  forwards: ExportForward[];
+};
+
 function isExported(ts: typeof TS, node: TS.Node): boolean {
   return (ts.getCombinedModifierFlags(node as TS.Declaration) & ts.ModifierFlags.Export) !== 0;
 }
 
-// Collects named, exported top-level declarations in one file — the raw material a barrel walk filters down to what it actually re-exports.
-export function getExportedDeclarations(ts: typeof TS, sourceFile: TS.SourceFile): Map<string, DeclarationEntry> {
-  const declarations = new Map<string, DeclarationEntry>();
+// Named top-level declarations in one statement (a variable statement can declare several).
+function declarationsIn(ts: typeof TS, statement: TS.Statement): DeclarationEntry[] {
+  if (ts.isFunctionDeclaration(statement) && statement.name) return [{ name: statement.name.text, kind: "function", node: statement }];
+  if (ts.isClassDeclaration(statement) && statement.name) return [{ name: statement.name.text, kind: "class", node: statement }];
+  if (ts.isInterfaceDeclaration(statement)) return [{ name: statement.name.text, kind: "interface", node: statement }];
+  if (ts.isTypeAliasDeclaration(statement)) return [{ name: statement.name.text, kind: "type", node: statement }];
+  if (ts.isEnumDeclaration(statement)) return [{ name: statement.name.text, kind: "enum", node: statement }];
+  if (ts.isVariableStatement(statement)) {
+    const kind = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0 ? "const" : "variable";
+    return statement.declarationList.declarations
+      .filter((decl) => ts.isIdentifier(decl.name))
+      .map((decl) => ({ name: (decl.name as TS.Identifier).text, kind, node: statement }));
+  }
+  return [];
+}
+
+// Appends unless already present — `export declare class A {}` followed by a redundant `export { A }` is one declaration.
+function addTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const list = map.get(key);
+  if (!list) map.set(key, [value]);
+  else if (!list.includes(value)) list.push(value);
+}
+
+// Builds a file's export table, covering `export { A as B } from`, local export lists (`declare class A {}; export { A as B }`, how bundled declaration files export), and `import { A } from; export { A }`.
+export function getFileExports(ts: typeof TS, sourceFile: TS.SourceFile): FileExports {
+  const local = new Map<string, DeclarationEntry[]>();
+  const declarations = new Map<string, DeclarationEntry[]>();
+  const imports = new Map<string, { specifier: string; importedName: string }>();
+  const forwards: ExportForward[] = [];
 
   for (const statement of sourceFile.statements) {
-    if (!isExported(ts, statement)) continue;
+    // `export default class Foo` exports the name "default", not "Foo".
+    const isDefault = (ts.getCombinedModifierFlags(statement as TS.Node as TS.Declaration) & ts.ModifierFlags.Default) !== 0;
+    for (const entry of declarationsIn(ts, statement)) {
+      addTo(local, entry.name, entry);
+      if (isExported(ts, statement)) addTo(declarations, isDefault ? "default" : entry.name, entry);
+    }
 
-    if (ts.isFunctionDeclaration(statement) && statement.name) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "function", node: statement });
-    } else if (ts.isClassDeclaration(statement) && statement.name) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "class", node: statement });
-    } else if (ts.isInterfaceDeclaration(statement)) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "interface", node: statement });
-    } else if (ts.isTypeAliasDeclaration(statement)) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "type", node: statement });
-    } else if (ts.isEnumDeclaration(statement)) {
-      declarations.set(statement.name.text, { name: statement.name.text, kind: "enum", node: statement });
-    } else if (ts.isVariableStatement(statement)) {
-      const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;
-      for (const decl of statement.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          declarations.set(decl.name.text, {
-            name: decl.name.text,
-            kind: isConst ? "const" : "variable",
-            node: statement,
-          });
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          imports.set(element.name.text, { specifier: statement.moduleSpecifier.text, importedName: (element.propertyName ?? element.name).text });
         }
       }
     }
   }
 
-  return declarations;
-}
-
-// A wildcard or named re-export the barrel walker follows; excludes bare `export {};`, which has no module specifier.
-export type ExportStatement =
-  | { kind: "wildcard"; specifier: string }
-  | { kind: "named"; specifier: string; names: { sourceName: string; exportedName: string }[] };
-
-export function getExportStatements(ts: typeof TS, sourceFile: TS.SourceFile): ExportStatement[] {
-  const statements: ExportStatement[] = [];
-
   for (const statement of sourceFile.statements) {
+    // `export default x;` (not CommonJS `export =`): a local declaration, an imported binding to follow, or an expression documented as written.
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      const target = ts.isIdentifier(statement.expression) ? statement.expression.text : undefined;
+      const entries = target === undefined ? undefined : local.get(target);
+      const imported = target === undefined ? undefined : imports.get(target);
+      if (entries) for (const entry of entries) addTo(declarations, "default", entry);
+      else if (imported) forwards.push({ kind: "named", specifier: imported.specifier, names: [{ sourceName: imported.importedName, exportedName: "default" }] });
+      else addTo(declarations, "default", { name: "default", kind: "const", node: statement });
+      continue;
+    }
     if (!ts.isExportDeclaration(statement)) continue;
-    if (!statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-
-    const specifier = statement.moduleSpecifier.text;
+    const specifier = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : undefined;
 
     if (!statement.exportClause) {
-      statements.push({ kind: "wildcard", specifier });
-    } else if (ts.isNamedExports(statement.exportClause)) {
-      const names = statement.exportClause.elements.map((el) => ({
-        sourceName: (el.propertyName ?? el.name).text,
-        exportedName: el.name.text,
-      }));
-      if (names.length > 0) statements.push({ kind: "named", specifier, names });
+      if (specifier !== undefined) forwards.push({ kind: "wildcard", specifier });
+      continue;
+    }
+    // `export * as ns from` exports a namespace object, not individual symbols — not followed.
+    if (!ts.isNamedExports(statement.exportClause)) continue;
+
+    const names = statement.exportClause.elements.map((el) => ({ sourceName: (el.propertyName ?? el.name).text, exportedName: el.name.text }));
+    if (specifier !== undefined) {
+      if (names.length > 0) forwards.push({ kind: "named", specifier, names });
+      continue;
+    }
+
+    // A local export list: each name is either a declaration in this file or an imported binding to follow.
+    for (const { sourceName, exportedName } of names) {
+      const entries = local.get(sourceName);
+      if (entries) {
+        for (const entry of entries) addTo(declarations, exportedName, entry);
+        continue;
+      }
+      const imported = imports.get(sourceName);
+      if (imported) forwards.push({ kind: "named", specifier: imported.specifier, names: [{ sourceName: imported.importedName, exportedName }] });
     }
   }
 
-  return statements;
+  return { declarations, forwards };
 }

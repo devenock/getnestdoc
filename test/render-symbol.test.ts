@@ -19,7 +19,7 @@ async function extract(name: string): Promise<{ symbols: SymbolRecord[]; version
   assert.ok(found, `${name} fixture not found`);
   const entry = resolveEntryTypes(found);
   assert.ok(entry.found, `${name}: no entry resolved`);
-  return { symbols: await extractPackage(entry.entryFile), version: found.manifest.version ?? "0.0.0" };
+  return { symbols: await extractPackage(entry.entryFile, entry.packageRoot), version: found.manifest.version ?? "0.0.0" };
 }
 
 const guidesFile = loadGuides(REPO_DATA);
@@ -92,4 +92,61 @@ test("an undocumented symbol's detail view shows the fallback line, never a blan
 
   const output = renderSymbol("@nestjs/swagger", version, apiProperty, guidesFile, aliasFile, { width: 100, color: false });
   assert.match(output, /No documentation available/);
+});
+
+test("an overloaded symbol renders one signature per overload, continuations indented so overloads stay distinct", async () => {
+  const { symbols, version } = await extract("@nestjs/common");
+  const body = symbols.find((s) => s.name === "Body")!;
+  const output = renderSymbol("@nestjs/common", version, body, guidesFile, aliasFile, { width: 80, color: false });
+  const signatureLines = output.split("\n").filter((line) => line.startsWith("function Body("));
+  assert.equal(signatureLines.length, 5);
+  assert.ok(output.includes("function Body(): ParameterDecorator\n"));
+  for (const line of output.split("\n")) assert.ok(line.length <= 80, `line exceeds width: ${line}`);
+});
+
+// plainText() flattened the whole doc into one paragraph: separate paragraphs merged, bullet lists ran into prose,
+// and a ```typescript fence became "For example: typescript async create(...)" (14 bundled symbols carry one).
+test("a symbol's doc keeps its paragraphs, bullet lists, and code examples (SPEC.md §4.1)", async () => {
+  const { symbols, version } = await extract("@nestjs/common");
+  const render = (name: string) => renderSymbol("@nestjs/common", version, symbols.find((s) => s.name === name)!, guidesFile, aliasFile, { width: 100, color: false });
+
+  const injectable = render("Injectable");
+  assert.match(injectable, /built-in Dependency Injection \(DI\) system\.\n\n {4}When injecting a provider/, "paragraphs stay separate");
+  assert.match(injectable, /\n {4}• defining the provider in the same module scope\n/, "list items are bulleted");
+  assert.match(injectable, /\n {4}• exporting the provider from one module scope and importing that module into the module scope\n {6}of the class/, "a wrapped item hangs under its text");
+
+  const body = render("Body");
+  assert.match(body, /\n {4}For example:\n\n {8}async create\(@Body\(\) createDto: CreateCatDto\)\n/, "the fence renders as an indented code block");
+  assert.doesNotMatch(body, /```|typescript async/, "no fence markers or language tag leak into prose");
+});
+
+test("the package index summary is the first prose sentence, never a code example", async () => {
+  const { docBlocks, firstSentence } = await import("../src/nest/doc-text.ts");
+  assert.equal(firstSentence("```ts\nconst x = 1;\n```\nDoes the thing. More."), "Does the thing.");
+  assert.deepEqual(docBlocks("One\ntwo.\n\n- a\n  b\n- c\nAfter.\n```ts\n  x();\n```"), [
+    { kind: "paragraph", text: "One two." },
+    { kind: "list", items: ["a b", "c"] },
+    { kind: "paragraph", text: "After." },
+    { kind: "code", code: "x();" },
+  ]);
+});
+
+// Width is floored at 40 (ARCHITECTURE.md §7), and at 40 the package index padded every row to its bucket's longest
+// name and the fixed "No documentation" line didn't wrap — 2314 over-width lines across the bundled scope. Only a
+// single unbreakable token (an identifier or a runnable `nest-doc …` command) may still exceed it.
+test("at the minimum width of 40, every over-width line is one unbreakable identifier or command", async () => {
+  const { loadBundledPackages } = await import("../src/nest/bundled-packages.ts");
+  const packages = loadBundledPackages(REPO_DATA).packages;
+  const width = 40;
+  const offenders: string[] = [];
+  for (const [name, entry] of Object.entries(packages)) {
+    const outputs = [renderPackageIndex(name, entry.packageVersion, entry.symbols, true, { width, color: false })];
+    for (const symbol of entry.symbols) outputs.push(renderSymbol(name, entry.packageVersion, symbol, guidesFile, aliasFile, { width, color: false }));
+    for (const line of outputs.flatMap((o) => o.split("\n"))) {
+      if (line.length <= width) continue;
+      const token = line.trim();
+      if (!/^\S+$/.test(token) && !/^nest-doc (--all )?\S+$/.test(token)) offenders.push(`${name}: ${JSON.stringify(line)}`);
+    }
+  }
+  assert.deepEqual(offenders.slice(0, 5), [], `${offenders.length} wrappable lines exceed ${width}`);
 });

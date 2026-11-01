@@ -41,7 +41,7 @@ $ nest-doc <query> --guide      force a guide lookup
 $ nest-doc <query> --api        force a symbol lookup
 $ nest-doc --all <package>      every export, not just the public ones
 $ nest-doc <query> --js         show JavaScript code samples instead of TypeScript
-$ nest-doc update               refresh the bundled guides
+$ nest-doc update               download the latest guides (stored per user, no sudo needed)
 $ nest-doc --clear-cache        drop the cached symbol data
 ```
 
@@ -51,6 +51,7 @@ Guides resolve by concept, the way you actually think about Nest:
 $ nest-doc guards
 $ nest-doc custom-decorators
 $ nest-doc providers            # the docs call this file components.md; we handle that
+$ nest-doc interceptors#binding-interceptors   # just one section
 ```
 
 Symbols resolve against **your** `node_modules`, so you get the version you actually have installed:
@@ -59,6 +60,7 @@ Symbols resolve against **your** `node_modules`, so you get the version you actu
 $ nest-doc common.Injectable
 $ nest-doc @nestjs/core.Reflector
 $ nest-doc @nestjs/common        # everything the package exports
+$ nest-doc @nestjs/platform-fastify/multipart   # a subpath entry point
 ```
 
 Or skip the package name — type what you actually see in the code:

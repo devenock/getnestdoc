@@ -1,3 +1,4 @@
+import { own } from "../../core/own.ts";
 import type { InternalLinkToken } from "../../core/render/types.ts";
 
 // Internal links appear as both relative and absolute (docs.nestjs.com) URLs in the real corpus — both resolve through the same alias table plus a direct-slug fallback, 100% (188/188 real internal-looking hrefs).
@@ -20,7 +21,7 @@ function resolveInternalHref(
   const anchor = hashIndex === -1 ? undefined : path.slice(hashIndex + 1);
   const urlPath = hashIndex === -1 ? path : path.slice(0, hashIndex);
 
-  const slug = urlToSlug[urlPath] ?? (guideSlugs.has(urlPath) ? urlPath : undefined);
+  const slug = own(urlToSlug, urlPath) ?? (guideSlugs.has(urlPath) ? urlPath : undefined);
   if (!slug) return undefined;
 
   return anchor ? { slug, anchor } : { slug };

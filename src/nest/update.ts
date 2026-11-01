@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { getDataHome } from "../core/cache/paths.ts";
 import { loadTypeScript } from "../core/extract/typescript-loader.ts";
 import type { Guide, GuidesFile } from "./guides/types.ts";
 import type { AliasFile } from "./aliases.ts";
@@ -14,7 +15,19 @@ export type UpdateResult = {
   guideCount: number;
   aliasCount: number;
   sourceCommit: string;
+  dataDir: string;
 };
+
+// Where `nest-doc update` writes: per user and per tool version, never the package's own install directory, which can be root-owned and is replaced by every reinstall.
+export function userGuideDataDir(toolVersion: string): string {
+  return join(getDataHome(), toolVersion);
+}
+
+// The user's updated corpus for this tool version when both files exist, else the release's own; version-scoping keeps an older update from shadowing a newer release.
+export function activeGuideDataDir(packagedDataDir: string, toolVersion: string): string {
+  const userDir = userGuideDataDir(toolVersion);
+  return existsSync(join(userDir, "guides.json")) && existsSync(join(userDir, "aliases.json")) ? userDir : packagedDataDir;
+}
 
 function walkMarkdownFiles(dir: string): string[] {
   const out: string[] = [];
@@ -33,8 +46,9 @@ function writeAtomic(path: string, contents: string): void {
   renameSync(tempPath, path);
 }
 
-// `nest-doc update` is the only networked command, reusing the same fetch/transform pipeline the build scripts run at release time; `ts`/`marked` load through their lazy loaders so other commands never pay to load them.
-export async function runUpdate(dataDir: string): Promise<UpdateResult> {
+// `nest-doc update` is the only networked command, reusing the same fetch/transform pipeline the build scripts run at release time; `ts`/`marked` load through their lazy loaders so other commands never pay to load them. Writes into userGuideDataDir(toolVersion), then removes corpora left by other tool versions.
+export async function runUpdate(toolVersion: string): Promise<UpdateResult> {
+  const dataDir = userGuideDataDir(toolVersion);
   const [ts, marked] = await Promise.all([loadTypeScript(), loadMarked()]);
   const tmpDir = mkdtempSync(join(tmpdir(), "getnestdoc-update-"));
 
@@ -74,7 +88,11 @@ export async function runUpdate(dataDir: string): Promise<UpdateResult> {
     writeAtomic(join(dataDir, "guides.json"), JSON.stringify(guidesFile));
     writeAtomic(join(dataDir, "aliases.json"), JSON.stringify(aliasFile));
 
-    return { guideCount: files.length, aliasCount: Object.keys(urlToSlug).length, sourceCommit };
+    for (const entry of readdirSync(getDataHome())) {
+      if (entry !== toolVersion) rmSync(join(getDataHome(), entry), { recursive: true, force: true });
+    }
+
+    return { guideCount: files.length, aliasCount: Object.keys(urlToSlug).length, sourceCommit, dataDir };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

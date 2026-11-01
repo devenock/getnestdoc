@@ -1,12 +1,16 @@
 // Produces data/packages.json (full symbol data, so a not-installed official package still renders real docs)
 // and data/names.json (bare-symbol-name -> owning package, derived from the same extraction pass).
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+//
+//   node scripts/build-packages.ts          latest published version of every package (release refresh)
+//   node scripts/build-packages.ts --pin    the versions already in data/packages.json — re-extracts after an
+//                                           extractor change without also pulling in upstream changes
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findPackageDir } from "../src/core/resolve/find-package.ts";
-import { resolveEntryTypes } from "../src/core/resolve/entry-types.ts";
+import { listEntryPoints, resolveEntryTypes, resolveSubpathTypes } from "../src/core/resolve/entry-types.ts";
 import { extractPackage } from "../src/core/extract/barrels.ts";
-import { fetchAndExtractPackage } from "./lib/fetch-npm-package.ts";
+import { installPackage } from "./lib/install-npm-package.ts";
 import type { SymbolRecord } from "../src/core/extract/types.ts";
 
 // Every name in src/nest/package-scope.ts's OFFICIAL_SCOPE_NAMES except cli and mau, which ship
@@ -62,22 +66,38 @@ async function resolveLatestVersion(name: string): Promise<string> {
   return meta.version;
 }
 
+// Root packages only: subpath entries are re-derived from each package's own exports map.
+function pinnedVersions(): Map<string, string> {
+  const existing = JSON.parse(readFileSync("data/packages.json", "utf8")) as PackagesFile;
+  return new Map(Object.entries(existing.packages).map(([name, entry]) => [name, entry.packageVersion]));
+}
+
 async function main(): Promise<void> {
+  const pins = process.argv.includes("--pin") ? pinnedVersions() : undefined;
   const tmpDir = mkdtempSync(join(tmpdir(), "getnestdoc-packages-"));
   const packages: Record<string, PackageEntry> = {};
   const names = new Map<string, string[]>();
   const skipped: string[] = [];
+  const subpathEntries: { specifier: string; symbols: SymbolRecord[] }[] = [];
 
   try {
     for (const short of PACKAGE_NAMES) {
       const packageName = `@nestjs/${short}`;
-      const version = await resolveLatestVersion(packageName);
-      console.log(`Fetching ${packageName}@${version}...`);
-      await fetchAndExtractPackage(packageName, version, tmpDir);
+      const pinned = pins?.get(packageName);
+      if (pins && !pinned) throw new Error(`--pin: ${packageName} has no version in data/packages.json`);
+      const version = pinned ?? (await resolveLatestVersion(packageName));
+      console.log(`Installing ${packageName}@${version}...`);
+      const installDir = join(tmpDir, short);
+      installPackage(packageName, version, installDir);
 
-      const found = findPackageDir(packageName, tmpDir);
+      const found = findPackageDir(packageName, installDir);
       if (!found) {
         skipped.push(`${packageName}: extracted but findPackageDir couldn't locate it`);
+        continue;
+      }
+
+      if (found.manifestError) {
+        skipped.push(`${packageName}: ${found.manifestError}`);
         continue;
       }
 
@@ -87,16 +107,40 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const symbols = await extractPackage(entry.entryFile);
+      const symbols = await extractPackage(entry.entryFile, entry.packageRoot);
       packages[packageName] = { packageVersion: version, symbols };
+      const addOwner = (name: string, owner: string) => {
+        const owners = names.get(name) ?? [];
+        if (!owners.includes(owner)) owners.push(owner);
+        names.set(name, owners);
+      };
+      for (const symbol of symbols) addOwner(symbol.name, packageName);
+      console.log(`  ${symbols.length} exports`);
 
-      for (const symbol of symbols) {
+      // Each named subpath entry point (./multipart, ./internal, ./plugin) is bundled under its full specifier; its bare-name ownership is settled after every root is known.
+      for (const subpath of listEntryPoints(found.manifest)) {
+        const specifier = `${packageName}/${subpath}`;
+        const subEntry = resolveSubpathTypes(found, subpath);
+        if (!subEntry.found) {
+          skipped.push(`${specifier}: no usable type declarations found`);
+          continue;
+        }
+        const subSymbols = await extractPackage(subEntry.entryFile, subEntry.packageRoot);
+        packages[specifier] = { packageVersion: version, symbols: subSymbols };
+        subpathEntries.push({ specifier, symbols: subSymbols });
+        console.log(`  ${specifier}: ${subSymbols.length} exports`);
+      }
+    }
+
+    // Bare names prefer public roots: a subpath entry owns a name only when no package root exports it, so an internal entry point (`@nestjs/core/internal`'s Module class) can't make `nest-doc @Module` ambiguous. It stays reachable as core/internal.Module.
+    const rootNames = new Set(names.keys());
+    for (const { specifier, symbols: subSymbols } of subpathEntries) {
+      for (const symbol of subSymbols) {
+        if (rootNames.has(symbol.name)) continue;
         const owners = names.get(symbol.name) ?? [];
-        if (!owners.includes(packageName)) owners.push(packageName);
+        if (!owners.includes(specifier)) owners.push(specifier);
         names.set(symbol.name, owners);
       }
-
-      console.log(`  ${symbols.length} exports`);
     }
 
     if (skipped.length > 0) {

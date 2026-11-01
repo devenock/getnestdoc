@@ -8,6 +8,13 @@ export function getCacheDir(): string {
   return join(base, "getnestdoc");
 }
 
+// Resolves the per-user data directory: $XDG_DATA_HOME or ~/.local/share, then a getnestdoc subdirectory.
+export function getDataHome(): string {
+  const xdgDataHome = process.env.XDG_DATA_HOME;
+  const base = xdgDataHome && xdgDataHome.length > 0 ? xdgDataHome : join(homedir(), ".local", "share");
+  return join(base, "getnestdoc");
+}
+
 // Strips path separators from a package name/version so a malicious value can never traverse outside the cache directory.
 function flattenPathSegment(value: string): string {
   return value.replace(/[/\\]/g, "+");

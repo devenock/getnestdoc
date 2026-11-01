@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SymbolRecord } from "../core/extract/types.ts";
+import { own } from "../core/own.ts";
+import { findPackageDir } from "../core/resolve/find-package.ts";
+import { splitModuleSpecifier } from "../core/resolve/specifier.ts";
+import { loadBundledPackages } from "./bundled-packages.ts";
 import { resolvePackageSymbols, resolvePackageSymbolsOrBundled } from "./symbols.ts";
 
 // The shape of the built bare-symbol-name index: symbol name mapped to the package(s) that export it.
@@ -18,6 +22,8 @@ export function loadNameIndex(dataDir: string): NameIndex {
 export type BareSymbolResolution =
   | { status: "found"; packageName: string; packageVersion: string; symbol: SymbolRecord; bundled?: true }
   | { status: "not-installed"; packageName: string; name: string }
+  | { status: "unusable"; message: string }
+  | { status: "missing-from-installed"; packageName: string; packageVersion: string; name: string }
   | { status: "ambiguous"; packageNames: string[] }
   | { status: "not-found" };
 
@@ -27,8 +33,9 @@ function listInstalledNestPackages(startDir: string): string[] {
   while (true) {
     const scopeDir = join(dir, "node_modules", "@nestjs");
     if (existsSync(scopeDir)) {
+      // Symlinks count — pnpm, workspaces, and `npm link` install packages as symlinks, which a Dirent reports as not a directory.
       return readdirSync(scopeDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
         .map((entry) => `@nestjs/${entry.name}`);
     }
     if (existsSync(join(dir, ".git"))) return [];
@@ -38,11 +45,16 @@ function listInstalledNestPackages(startDir: string): string[] {
   }
 }
 
-async function scanInstalledPackagesForName(name: string, startDir: string): Promise<BareSymbolResolution> {
+// Skips installs at exactly the bundled version — the name index was built from it, so it already says the name isn't there — keeping a typo from cold-extracting every package.
+async function scanInstalledPackagesForName(name: string, startDir: string, dataDir: string): Promise<BareSymbolResolution> {
   const candidates = listInstalledNestPackages(startDir);
+  const bundled = loadBundledPackages(dataDir).packages;
   const matches: { packageName: string; packageVersion: string; symbol: SymbolRecord }[] = [];
 
   for (const packageName of candidates) {
+    const installedVersion = findPackageDir(packageName, startDir)?.manifest.version;
+    if (installedVersion !== undefined && own(bundled, packageName)?.packageVersion === installedVersion) continue;
+
     const resolved = await resolvePackageSymbols(packageName, startDir);
     if (resolved.status !== "found") continue;
     const symbol = resolved.result.symbols.find((s) => s.name === name);
@@ -57,17 +69,28 @@ async function scanInstalledPackagesForName(name: string, startDir: string): Pro
 // Resolves a bare symbol name to its package; `name` has already had a leading "@" stripped by the caller.
 export async function resolveBareSymbol(name: string, dataDir: string, startDir: string): Promise<BareSymbolResolution> {
   const nameIndex = loadNameIndex(dataDir);
-  const owners = nameIndex.names[name];
+  const owners = own(nameIndex.names, name);
 
-  if (!owners) return scanInstalledPackagesForName(name, startDir);
-  if (owners.length > 1) return { status: "ambiguous", packageNames: owners };
+  if (!owners) return scanInstalledPackagesForName(name, startDir, dataDir);
 
-  const packageName = owners[0]!;
+  // Several packages export the name, but if exactly one is installed here, that's the one this project imports it from.
+  let packageName = owners[0]!;
+  if (owners.length > 1) {
+    const installed = owners.filter((owner) => findPackageDir(splitModuleSpecifier(owner).packageName, startDir) !== undefined);
+    if (installed.length !== 1) return { status: "ambiguous", packageNames: owners };
+    packageName = installed[0]!;
+  }
+
   const resolved = await resolvePackageSymbolsOrBundled(packageName, startDir, dataDir);
-  if (resolved.status !== "found") return { status: "not-installed", packageName, name };
+  if (resolved.status === "not-installed") return { status: "not-installed", packageName, name };
+  // Installed but unusable is a local problem to report as such, never "isn't installed".
+  if (resolved.status === "unusable") return { status: "unusable", message: resolved.message };
+  // The name lives in a subpath entry point the installed version doesn't have yet.
+  if (resolved.status === "no-entry-point") return { status: "missing-from-installed", packageName, packageVersion: resolved.packageVersion, name };
 
   const symbol = resolved.result.symbols.find((s) => s.name === name);
-  if (!symbol) return { status: "not-installed", packageName, name };
+  // The index says this package exports the name, but the installed version doesn't (older, or newer and removed).
+  if (!symbol) return { status: "missing-from-installed", packageName, packageVersion: resolved.result.packageVersion, name };
 
   return { status: "found", packageName, packageVersion: resolved.result.packageVersion, symbol, ...(resolved.result.bundled ? { bundled: true } : {}) };
 }

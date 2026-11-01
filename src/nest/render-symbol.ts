@@ -4,7 +4,8 @@ import type { SymbolRecord } from "../core/extract/types.ts";
 import type { AliasFile } from "./aliases.ts";
 import { resolveSeeUrl } from "./guides/index.ts";
 import type { GuidesFile } from "./guides/types.ts";
-import { plainText } from "./doc-text.ts";
+import { docBlocks, plainText } from "./doc-text.ts";
+import { renderCodeLines } from "../core/render/code.ts";
 
 const NO_DOC_LINE = "No documentation available in this package.";
 
@@ -43,6 +44,20 @@ function renderSeeAlso(see: { url: string }[], guidesFile: GuidesFile, aliasFile
   return lines;
 }
 
+// Renders the doc body indented four: wrapped paragraphs, bulleted lists with a hanging indent, highlighted code examples indented a further four.
+function renderDocBody(doc: string, options: RenderOptions): string[] {
+  const sections = docBlocks(doc).map((block) => {
+    if (block.kind === "paragraph") return wrapText(plainText(block.text), Math.max(1, options.width - 4)).map((l) => `    ${l}`);
+    if (block.kind === "list") {
+      return block.items.flatMap((item) =>
+        wrapText(plainText(item), Math.max(1, options.width - 6)).map((l, i) => (i === 0 ? `    • ${l}` : `      ${l}`)),
+      );
+    }
+    return renderCodeLines(block.code, { ...options, width: Math.max(1, options.width - 8) }).map((l) => `        ${l}`);
+  });
+  return sections.flatMap((section, i) => (i === 0 ? section : ["", ...section]));
+}
+
 // Renders one symbol's signature, doc, parameters, and see-also links; a package can ship zero JSDoc, so the doc section always shows an explicit fallback line rather than going blank.
 export function renderSymbol(
   packageName: string,
@@ -54,16 +69,18 @@ export function renderSymbol(
 ): string {
   const lines: string[] = [`${packageName}@${packageVersion}`, ""];
 
-  const displaySignature = symbol.signature.replace(/^export\s+/, "").replace(/^declare\s+/, "").replace(/;$/, "");
-  // Unindented sets the left margin, not a promise it fits on one line — a large enum or interface member list routinely doesn't.
-  lines.push(...wrapText(displaySignature, Math.max(1, options.width)), "");
+  // One line per overload; wrapped continuations hang by four so overloads stay distinct.
+  for (const overload of symbol.signature.split("\n")) {
+    const displaySignature = overload.replace(/^export\s+/, "").replace(/^declare\s+/, "").replace(/;$/, "");
+    const wrapped = wrapText(displaySignature, Math.max(1, options.width - 4));
+    lines.push(wrapped[0]!, ...wrapped.slice(1).map((line) => `    ${line}`));
+  }
+  lines.push("");
 
   if (symbol.doc) {
-    for (const wrapped of wrapText(plainText(symbol.doc), Math.max(1, options.width - 4))) {
-      lines.push(`    ${wrapped}`);
-    }
+    lines.push(...renderDocBody(symbol.doc, options));
   } else {
-    lines.push(`    ${NO_DOC_LINE}`);
+    lines.push(...wrapText(NO_DOC_LINE, Math.max(1, options.width - 4)).map((l) => `    ${l}`));
   }
   lines.push("");
 

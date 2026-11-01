@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isolatedEnv } from "../helpers/env.ts";
 
 const BIN = fileURLToPath(new URL("../../dist/nest-doc.mjs", import.meta.url));
 
 function run(args: string[]) {
-  return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8" });
+  return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", env: isolatedEnv() });
 }
 
 test("nest-doc interceptors: exact slug resolves, exits 0, stderr empty", () => {

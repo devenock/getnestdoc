@@ -92,3 +92,36 @@ test("every table token has one row length per row, matching its header when pre
     }
   }
 });
+
+test("every `nest-doc slug#anchor` hint printed by the shipped corpus resolves to a guide, almost all to a section", async () => {
+  const { findGuideSection, loadGuides } = await import("../src/nest/guides/index.ts");
+  const { loadAliases } = await import("../src/nest/aliases.ts");
+  const dataDir = fileURLToPath(new URL("../data", import.meta.url));
+  const shipped = loadGuides(dataDir);
+  const aliases = loadAliases(dataDir);
+
+  const hints: string[] = [];
+  JSON.stringify(shipped.guides, (_key, value: { type?: string; slug?: string; anchor?: string }) => {
+    if (value && value.type === "internalLink" && value.anchor) hints.push(`${value.slug}#${value.anchor}`);
+    return value;
+  });
+  assert.ok(hints.length > 100, `expected the corpus's anchor hints, found ${hints.length}`);
+
+  const missing = hints.filter((hint) => {
+    const lookup = findGuideSection(hint, shipped, aliases);
+    assert.ok(lookup, `nest-doc ${hint} does not resolve to any guide`);
+    return lookup!.missingAnchor !== undefined;
+  });
+  // Measured against the shipped corpus: 121 hints, 115 resolve to a section (exactly or ignoring punctuation). The
+  // remaining 6 link to headings that don't exist in this docs revision — they print the whole guide with a note.
+  // A change here means either upstream fixed/broke links or the anchor rule drifted from the site's.
+  assert.equal(hints.length, 121);
+  assert.deepEqual(missing, [
+    "migration#nodejs-requirements",
+    "recipes/crud-generator#crud-generator",
+    "devtools/overview#investigating-the-cannot-resolve-dependency-error",
+    "techniques/configuration#service",
+    "techniques/caching#different-stores",
+    "techniques/caching#customize-caching",
+  ]);
+});

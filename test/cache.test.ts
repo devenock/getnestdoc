@@ -6,9 +6,10 @@ import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getCacheDir, getCacheFilePath } from "../src/core/cache/paths.ts";
-import { readCache, writeCache } from "../src/core/cache/store.ts";
+import { CACHE_FORMAT_VERSION, readCache, writeCache } from "../src/core/cache/store.ts";
 import type { CacheFile } from "../src/core/cache/store.ts";
 import { resolvePackageSymbols } from "../src/nest/symbols.ts";
+import { isolatedEnv } from "./helpers/env.ts";
 
 const FIXTURES_ROOT = fileURLToPath(new URL("./fixtures", import.meta.url));
 const BIN = fileURLToPath(new URL("../dist/nest-doc.mjs", import.meta.url));
@@ -19,7 +20,7 @@ function tempCacheDir(): string {
 
 function sampleCacheFile(overrides: Partial<CacheFile> = {}): CacheFile {
   return {
-    version: 1,
+    version: CACHE_FORMAT_VERSION,
     package: "@nestjs/common",
     packageVersion: "12.0.1",
     entryFile: "/x/index.d.ts",
@@ -101,13 +102,15 @@ test("truncated JSON self-heals: deleted, treated as a miss, and a fresh write s
   }
 });
 
-test("a CacheFile.version mismatch is treated as a miss, not an error", () => {
+// Format 1 entries were written by the extractor before overload merging and aliased/local re-export handling
+// (ADR-0011) — same package version, different (wrong) records. They must never be served after an upgrade.
+test("a CacheFile.version mismatch (e.g. a format-1 entry from the old extractor) is treated as a miss, not an error", () => {
   const cacheDir = tempCacheDir();
   try {
     mkdirSync(cacheDir, { recursive: true });
     const filePath = mustGetCacheFilePath(cacheDir, "@nestjs/common", "12.0.1");
     // @ts-expect-error deliberately writing an incompatible format version
-    writeFileSync(filePath, JSON.stringify(sampleCacheFile({ version: 2 })));
+    writeFileSync(filePath, JSON.stringify(sampleCacheFile({ version: 1 })));
 
     const result = readCache(cacheDir, "@nestjs/common", "12.0.1");
     assert.equal(result, undefined);
@@ -138,7 +141,7 @@ test("a read-only cache directory: the real binary still exits 0 for a symbol lo
     const result = spawnSync(process.execPath, [BIN, "common.Injectable"], {
       encoding: "utf8",
       cwd: FIXTURES_ROOT,
-      env: { ...process.env, XDG_CACHE_HOME: cacheDir },
+      env: isolatedEnv({ XDG_CACHE_HOME: cacheDir }),
     });
     assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
     assert.match(result.stdout, /Injectable/);
@@ -280,6 +283,69 @@ test("readCache strips raw escape sequences from an already-cached entry, not ju
     assert.ok(!symbol!.doc.includes(esc) && !symbol!.doc.includes(bel), `doc still unsafe: ${JSON.stringify(symbol!.doc)}`);
     assert.ok(!symbol!.tags[0]!.text.includes(esc), `tag text still unsafe: ${JSON.stringify(symbol!.tags[0]!.text)}`);
     assert.ok(!symbol!.see[0]!.text.includes(esc) && !symbol!.see[0]!.url.includes(esc), "see link still unsafe");
+  } finally {
+    rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
+
+// Valid JSON with the wrong shape used to pass straight through: `{ "version": 1 }` crashed the lookup on
+// `symbols.map`, exit 4. ARCHITECTURE.md §10: a corrupt entry is deleted, re-extracted, and the lookup continues.
+test("a parseable cache entry with the wrong shape is deleted and treated as a miss, never a crash", () => {
+  const malformed: unknown[] = [
+    { version: CACHE_FORMAT_VERSION },
+    sampleCacheFile({ symbols: "nope" as unknown as CacheFile["symbols"] }),
+    sampleCacheFile({ symbols: [{ name: "X" }] as unknown as CacheFile["symbols"] }),
+    sampleCacheFile({
+      symbols: [{ name: "X", kind: "spaceship", signature: "", doc: "", tags: [], see: [], isPublicApi: true, file: "a", line: 1 }] as unknown as CacheFile["symbols"],
+    }),
+    sampleCacheFile({
+      symbols: [{ name: "X", kind: "const", signature: "", doc: "", tags: [{ name: 1 }], see: [], isPublicApi: true, file: "a", line: 1 }] as unknown as CacheFile["symbols"],
+    }),
+    null,
+    [1, 2],
+  ];
+  for (const contents of malformed) {
+    const cacheDir = tempCacheDir();
+    try {
+      const filePath = mustGetCacheFilePath(cacheDir, "@nestjs/common", "12.0.1");
+      writeFileSync(filePath, JSON.stringify(contents));
+      assert.equal(readCache(cacheDir, "@nestjs/common", "12.0.1"), undefined, `expected a miss for ${JSON.stringify(contents)}`);
+      assert.ok(!existsSync(filePath), `expected ${JSON.stringify(contents)} to be deleted`);
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("every SymbolRecord string field is sanitized on read, including name and file", () => {
+  const cacheDir = tempCacheDir();
+  try {
+    const esc = "\x1b";
+    const filePath = mustGetCacheFilePath(cacheDir, "@nestjs/common", "12.0.1");
+    writeFileSync(
+      filePath,
+      JSON.stringify(
+        sampleCacheFile({
+          symbols: [
+            {
+              name: `Evil${esc}]52;c;cHduZWQ=\x07`,
+              kind: "const",
+              signature: "",
+              doc: "",
+              tags: [{ name: `ex${esc}`, text: "" }],
+              see: [],
+              isPublicApi: true,
+              file: `dir${esc}[2J/index.d.ts`,
+              line: 1,
+            },
+          ],
+        }),
+      ),
+    );
+    const symbol = readCache(cacheDir, "@nestjs/common", "12.0.1")!.symbols[0]!;
+    for (const value of [symbol.name, symbol.file, symbol.tags[0]!.name]) {
+      assert.ok(!value.includes(esc) && !value.includes("\x07"), `control byte survived: ${JSON.stringify(value)}`);
+    }
   } finally {
     rmSync(cacheDir, { recursive: true, force: true });
   }

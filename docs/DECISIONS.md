@@ -31,6 +31,8 @@ Pin `"typescript": "6.0.3"` — exact, no caret — with an inline comment stati
 
 Add a CI assertion that `typeof ts.createSourceFile === "function"`, so a transitive or careless bump fails the build rather than the user's first command.
 
+*Update 2026-11-01:* the assertion didn't exist until now — it's in `test/typescript.test.ts`, alongside an exact `6.0.3` pin check. At runtime, `loadTypeScript` also rejects a module without `createSourceFile` with a message naming 6.0.3, rather than letting the first lookup fail with "is not a function".
+
 ### Consequences
 
 - Immune to an accidental bump into a version that cannot work.
@@ -137,8 +139,8 @@ The alias table is generated from the docs repo's own `*.routes.ts` route defini
 
 ### Consequences
 
-- Guides are pinned to the release. Staleness is bounded by release cadence — refresh in CI on a schedule.
-- `nest-doc update` provides an escape hatch for users who want a newer corpus, as the only networked command.
+- Guides are pinned to the release. Staleness is bounded by release cadence — refresh in CI on a schedule. *(Update 2026-11-01: no scheduled refresh exists; the build scripts are run by hand before a release — ARCHITECTURE.md §6.1.)*
+- `nest-doc update` provides an escape hatch for users who want a newer corpus, as the only networked command. *(It writes to a per-user directory, not the package — ADR-0013.)*
 - Retain the Nest copyright notice in the package and attribute clearly in the README.
 - A docs repo restructure breaks the build script. It fails loudly at build time, never silently at runtime.
 
@@ -269,7 +271,7 @@ nest-doc Get           bare symbol     → search the name index
 
 Guides win ties — `nest-doc Module` could mean the guide or the decorator; guides are the cheaper, more common intent, and `--api` forces the other.
 
-**Name index.** Bare lookup needs name → package. Ship a prebuilt index for the official `@nestjs` scope, generated alongside `guides.json`, rather than scanned: it's instant, needs no cache warm-up, and works before the package is even installed (in which case the tool reports the symbol, names its package, and says it isn't installed). Fall back to scanning installed `@nestjs/*` for anything outside the shipped index. Where a name maps to several packages, print the list and exit 1 rather than guessing.
+**Name index.** Bare lookup needs name → package. Ship a prebuilt index for the official `@nestjs` scope, generated alongside `guides.json`, rather than scanned: it's instant, needs no cache warm-up, and works before the package is even installed (in which case the tool reports the symbol, names its package, and says it isn't installed). Fall back to scanning installed `@nestjs/*` for anything outside the shipped index *(update 2026-11-01: skipping installs at exactly the bundled version, which the index already covers — otherwise every typo cold-extracted every installed package, measured 321 ms with three)*. Where a name maps to several packages, print the list and exit 1 rather than guessing.
 
 ### Consequences
 
@@ -320,7 +322,8 @@ Two real, verified pitfalls, both caught by testing the actual behavior rather t
 - Scrolling and search work for long output without a new runtime dependency — `less` is assumed present (near-universal on Unix-likes; falls back to a plain print if it isn't, rather than failing).
 - Piped/redirected/short output is completely unaffected — verified via the full integration suite (spawned via `spawnSync`, never a TTY) and a dedicated test asserting a 165-line guide still prints in full when spawned non-interactively.
 - `$PAGER` is respected for users who already have one configured; a missing or broken pager degrades to a plain print rather than losing output.
-- If this doesn't hold up in practice, it's a small, isolated, reversible change — one module (`core/pager.ts`) and six call sites in `cli/doc.command.ts`.
+- If this doesn't hold up in practice, it's a small, isolated, reversible change — one module (`core/pager.ts`) and its `writeOutput` call sites in `cli/doc.command.ts`.
+- *Update 2026-11-01:* Ctrl-C while paging was checked in a real pseudo-terminal under shell-style job control (macOS, less 668): node exits on SIGINT, `less` exits with it after restoring the terminal (alternate screen left, echo and canonical mode back on). So `^C` quits the pager rather than being swallowed by it as in `git`; nothing is left broken. Not yet verified on Linux.
 
 ---
 
@@ -344,6 +347,7 @@ Sanitize at every point untrusted data crosses into the system, rather than tryi
 
 - **Cache paths** (`core/cache/paths.ts`): replace every `/` and `\` in both `packageName` and `packageVersion` before they ever become part of a filename. Without a path separator left in either string, there is no way to construct a new path segment, so the flattened result can never resolve outside the cache directory — verified across 3 to 20 levels of `../`, every one collapses into one ordinary, if ugly, filename. `getCacheFilePath` also re-validates the final resolved path stays inside `cacheDir` as a defense-in-depth backstop (returns `undefined` if not; both `readCache`/`writeCache` treat that exactly like an unwritable cache directory), for whatever the character replacement doesn't anticipate rather than for the cases already covered.
 - **Barrel following** (`core/extract/barrels.ts`): `resolveModuleSpecifier` now takes the package's own root directory and refuses to return a path outside it. Verified this doesn't break any real barrel: all three real fixtures (`@nestjs/common` 206, `@nestjs/core` 54, `@nestjs/swagger` 160 — the latter with a nested `dist/` entry point, the case most likely to have false-positived) extract the exact same counts as before.
+- **Entry resolution** (`core/resolve/entry-types.ts`, added 2026-11-01): `types`/`typings`/`exports`/`main` are package.json strings too, and were joined onto the package directory unchecked — `"types": "../../../secret/x.d.ts"` rendered a file outside the package, verified against the built binary. Worse, the barrel containment root above was `dirname(entryFile)`, so an escaped entry moved the boundary with it. Every entry candidate now has to resolve inside the package directory, and `extractPackage` takes that directory (`EntryResolution.packageRoot`) as its containment root rather than deriving one from the entry. Both checks go through `core/contain.ts`, which compares **real** paths, so a symlink shipped inside a package can't point out either. Using the package directory rather than the entry's directory also stops refusing legitimate re-exports from a sibling directory of a `dist/` entry, and makes `SymbolRecord.file` relative to the package root as SPEC.md §3 always said.
 - **Extracted text** (`core/extract/sanitize.ts`): every string field of a `SymbolRecord` — `doc`, `signature`, each tag's text, each `@see` link's text and URL — has every C0 control byte stripped except `\t`/`\n`, at the one point (`buildSymbolRecord`) all of them get assembled. This runs on raw source text, before any of the tool's *own* legitimate ANSI colour codes are added at render time, so it can't strip its own styling — only text a third party wrote. Re-applied on every cache **read**, not just at extraction: a cache entry written by a pre-fix version of this tool (or hand-tampered on disk) could already have the raw bytes baked in, and upgrading the tool doesn't retroactively clean an existing `~/.cache/getnestdoc/*.json` — a cache entry only invalidates on a package version bump, not a tool version bump.
 
 ### Rationale
@@ -378,14 +382,124 @@ Two packages in the official list — `@nestjs/cli` and `@nestjs/mau` — ship o
 
 Building this surfaced a real, separate bug in the extraction engine itself: `@nestjs/bull`'s barrel re-exports from a sibling package (`@nestjs/bull-shared`) by bare specifier, not a relative path. `resolveModuleSpecifier` assumed every specifier was relative and crashed with `ENOENT` trying to read a nonexistent nested path. Fixed by checking the resolved candidate actually exists before returning it — a cross-package specifier now correctly falls through as "don't follow this edge" instead of crashing, which also means this bug was live for any real user with `@nestjs/bull` installed, not just the build script.
 
+*Update 2026-11-01:* "don't follow this edge" turned out to drop real API. Checked against the latest Nest 10, 11, and 12 installs with the TypeScript checker as the oracle, it was the *only* remaining extraction gap: `getQueueToken` and `JOB_REF` (bull, bullmq) and `EventEmitter2` (event-emitter 3.x). Bare re-exports are now followed into the installed dependency, contained within that dependency's own root (ARCHITECTURE.md §5.1).
+
 ### Rationale
 
 `go doc`'s two-tier model — bundled stdlib, on-demand-fetched third party — maps cleanly onto this tool's two-tier data model: bundled guides plus bundled official-package reference (both static, both build-time, both offline) versus live `node_modules` resolution for everything else (dynamic, always version-accurate). Extending "bundle it" to the *entire* npm ecosystem was considered and rejected — unbounded scope, and it would silently break the version-match guarantee for the common case (a project's own installed version) in exchange for covering packages this tool was never trying to cover.
 
 ### Consequences
 
-- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
+- `data/packages.json` adds ~830 KB uncompressed (~95 KB gzipped; 983 KB / 124 KB after the 2026-11-01 refresh to the latest releases with overloads merged, dependency re-exports followed, and subpath entry points bundled) to the published package — measured directly from the real build output, not estimated. Comparable to the `~2 MB` `stripRaw()` already saves on `guides.json` (ADR context); nowhere near the multi-megabyte growth that was the real worry going in.
 - Loaded lazily — only inside the not-installed fallback branch, never on the hot path. Benchmarked directly: `nest-doc interceptors` (150 ms budget) still runs at ~52 ms median, and the bundled-fallback path itself (`nest-doc @nestjs/throttler`, nothing installed) runs at ~60 ms median, ~105 ms p95 — comfortably inside budget.
 - Bundled data is pinned to whatever was live on npm at the time `build-packages.ts` last ran — the same relationship Go has between your installed toolchain version and the stdlib docs it shows you. Refreshed on `getnestdoc` releases, not on every `nest-doc update` (which stays guide-only, per its own contract of being the only networked command run by users).
 - `scripts/build-names.ts` is deleted; `build:names` in `package.json` is now `build:packages`.
 - Six new integration tests in `test/phase8.test.ts` cover: bundled fallback for a scoped-package query, the bare shorthand form, a newly-added package (`mapped-types`), the `package.symbol` form, the bare-symbol-name form, and the case where no bundled data exists at all (`@nestjs/cli`) — confirming the plain not-installed message still shows correctly rather than silently claiming coverage that doesn't exist.
+
+---
+
+## ADR-0011: Function overloads merge into one `SymbolRecord`
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+Extraction keyed declarations by name in a `Map`, so for an overloaded function only the last declaration survived. Measured on `@nestjs/common@12.0.1`: 8 exports are overloaded — `Body`, `Param`, and `Query` (5 overloads each), `RawBody`, `UploadedFile`, `Controller` (3), `UploadedFiles`, `HostParam` (2). These are among the most-queried decorators in the framework, and `nest-doc common.Body` showed one of five signatures, with only that overload's JSDoc and `@param` list.
+
+Each overload carries its own JSDoc block. SPEC.md §3 fixes one `SymbolRecord` per exported name, and `names.json`, the cache, and the package index all assume that.
+
+### Decision
+
+Same-name function declarations in one file merge into one record:
+
+- `signature` — every overload's declaration text, in source order, one per line (`\n`-joined).
+- `doc` — the first overload that has prose. Nest writes the general description on the first overload; later ones restate it with a variant.
+- `tags` — the union across overloads; `@param` deduplicated by parameter name (first description wins), other tags by exact text.
+- `see` — the union, deduplicated by URL.
+- `isPublicApi` — true if any overload is tagged.
+
+`renderSymbol` prints one signature line per overload; a wrapped continuation hangs by four columns so overloads stay visually distinct.
+
+Same-name declarations that aren't all functions (declaration merging, e.g. an interface and a const) keep the previous behaviour — the last declaration wins.
+
+*Amended 2026-11-01:* declaration merging now merges the same way. Verified against the TypeScript checker's documentation comments across the latest Nest 10/11/12, "last wins" was the only remaining doc loss: `@nestjs/cache-manager`'s documented `abstract class Cache` (the injection token) is merged with an undocumented `interface Cache`, and the record showed the bare interface. Every same-name declaration set — overloads or merging — now shows each declaration's signature, the first documented prose, and the union of tags; `kind` is the first *value* declaration's (class, function, enum, const — what a user writes), else the first. Exactly 6 exports across the scope changed (`Cache`, `EventEmitter2`, `ThrottlerStorage`, and `@nestjs/jwt`'s three error classes), and documented exports now match the checker one for one.
+
+### Consequences
+
+- No change to the `SymbolRecord` shape, so the cache, `packages.json`, and every consumer stay compatible. `signature` is multi-line only for overload sets, which SPEC.md §3's "single line where possible" already allows.
+- Per-overload prose beyond the first is not shown. Acceptable: it restates the first overload's description, and the full parameter list is still merged in.
+- Export counts are unchanged (206 for `@nestjs/common`) — overloads were never separate names.
+
+---
+
+## ADR-0012: `slug#anchor` jumps to a guide section
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+Rendered guides print every internal link as a runnable hint — `nest-doc interceptors#binding-interceptors` — and 121 of those hints in the shipped corpus carry an anchor. The lookup had no `#` handling at all, so every one of them was a miss (exit 1). `Heading.tokenIndex` (SPEC.md §1, "for anchor jumps") was stored for exactly this and never read.
+
+Stored anchors follow docs.nestjs.com's own implicit-id rule, verified against upstream `src/app/shared/directives/header-anchor.directive.ts`: `innerText.replace(/\s/g, '-').toLocaleLowerCase()`, no explicit ids in the markdown. That rule keeps punctuation — `Factory providers: useFactory` → `factory-providers:-usefactory` — while the corpus's own links are frequently written without it (`#factory-providers-usefactory`). Measured: of 121 hints, 108 match a heading exactly, 7 more only when punctuation is ignored, and 6 name headings that don't exist in this docs revision at all (e.g. `techniques/configuration#service`).
+
+### Decision
+
+`nest-doc <slug>#<anchor>` resolves the guide as before, then narrows to the section starting at the matching heading and ending at the next heading of the same or shallower depth.
+
+Matching is exact first, then punctuation-insensitive (both sides lowercased, runs of non-alphanumerics collapsed to `-`). An anchor that matches nothing prints the **whole guide** with a one-line note on stderr, exit 0 — the user asked for that guide, and a printed hint should never be a dead end.
+
+### Consequences
+
+- Every printed hint runs: 115 of 121 land on their section, 6 on the whole guide with a note. `test/guides.test.ts` pins those exact numbers, so upstream link churn or a drift in the anchor rule shows up as a test failure.
+- `#` is safe unquoted in POSIX shells mid-word, so the printed form is copy-pasteable as-is.
+- "See also" entries on symbols still print without anchors, matching SPEC.md §4.1.
+
+---
+
+## ADR-0013: `nest-doc update` writes to a per-user, per-version data directory
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+`nest-doc update` wrote the refreshed `guides.json`/`aliases.json` over the copies inside the package's own install directory (`<global node_modules>/getnestdoc/data/`). Two real problems:
+
+1. **It fails for system-wide installs.** A global install under a root-owned prefix (`sudo npm i -g`, distro Node in `/usr/lib/node_modules`) leaves `data/` unwritable by the user. Verified by running the real command against a scratch install with a read-only `data/`: the full corpus downloaded, then `EACCES`, exit 4 with a stack trace.
+2. **It doesn't survive.** Any reinstall or upgrade replaces the package directory and silently discards the update.
+
+### Decision
+
+`update` writes to `${XDG_DATA_HOME:-~/.local/share}/getnestdoc/<tool version>/`, then deletes sibling directories left by other tool versions. Guide lookups load from that directory when **both** `guides.json` and `aliases.json` exist there, otherwise from the package's own `data/`. `names.json` and `packages.json` always come from the package — `update` never touched them.
+
+Scoping by tool version is what keeps upgrades correct: a newer release ships a newer corpus (and possibly a newer token format its renderer expects), and an update made under an older version must never shadow it. Requiring both files means a half-written pair falls back to the release corpus rather than mixing two revisions.
+
+### Consequences
+
+- `update` works for every install layout without elevated permissions, and the result persists across reinstalls of the same version.
+- After an upgrade, the release corpus is used until the user runs `update` again — the cost of never serving a corpus older than the one shipped.
+- Two `existsSync` calls on the guide path; no measurable latency.
+- `XDG_DATA_HOME` joins the environment table (SPEC.md §5). The test suite pins it to a nonexistent directory (`test/helpers/env.ts`) so a developer's own updated corpus can't leak into test runs.
+
+---
+
+## ADR-0014: Subpath entry points
+
+**Status:** Accepted · **Date:** 2026-11-01
+
+### Context
+
+Verifying against the latest Nest 10, 11, and 12 installs showed packages declaring named subpath entry points in their `exports` maps, each with its own public surface: `@nestjs/platform-fastify/multipart` (Nest 12's fastify file uploads, 20 exports), `@nestjs/common/internal` (84), `@nestjs/core/internal` (50), `@nestjs/websockets/internal` (14), and `./plugin` in `@nestjs/swagger` and `@nestjs/graphql`. None were reachable: `nest-doc @nestjs/platform-fastify/multipart` looked for a package directory literally named that and reported it as not installed. Nest 12 packages also declare `"./*"` patterns that map onto every internal file.
+
+### Decision
+
+A package query may carry a subpath. It resolves through the `exports` map by Node's own rules — an exact key, else the `*` pattern with the longest prefix — through the same types-first candidate walk and package containment as the root entry. A package without an `exports` map gets Node's legacy deep path (`<subpath>.d.ts`, `<subpath>/index.d.ts`); one *with* a map exposes only what the map lists, as in Node.
+
+- The whole specifier is the lookup key everywhere a package name was: cache filename, `packages.json`, `names.json` owners, displayed name.
+- Only **explicitly named** keys count as entry points: they're listed under `ENTRY POINTS` on the root package index, bundled for the official scope, and offered as suggestions. `"*"` patterns still resolve on request — `nest-doc @nestjs/common/pipes/validation.pipe` works — but they're "any internal file", not a list, so they're never enumerated or bundled.
+- A subpath the package doesn't export is a miss (exit 1) naming the entry points it does have — not "unusable" (the package is fine) and not "not installed" (it is).
+
+### Consequences
+
+- Every explicitly named entry point of the official scope is documented: verified with the TypeScript checker as an oracle, export for export, across all three majors.
+- The shorthand table applies to the first segment: `platform-fastify/multipart` → `@nestjs/platform-fastify/multipart`.
+- A bare word containing a slash that isn't a known package (`fundamentals/custom-provider`) is unaffected and still falls through to guide suggestions.

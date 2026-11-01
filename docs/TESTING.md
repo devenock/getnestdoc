@@ -57,7 +57,7 @@ Three Nest majors for `@nestjs/common`, because packaging changed across them an
 
 **Render the whole corpus, not a sample.** Hand-written renderers fail on the one file with a nested table inside a list. Iterate all 143 guides, every time.
 
-**Every latency-relevant change re-runs the benchmark.** Headroom is ~30 ms. A 10 ms regression is a third of it, and it is invisible without a threshold.
+**Every latency-relevant change re-runs the benchmark.** Headroom is ~100 ms on every hot path (ARCHITECTURE.md §9) — generous, which is exactly how it gets spent unnoticed. A regression is invisible without a threshold.
 
 **Test the piped path.** ANSI leaking into `nest-doc x | grep` is a real bug that no TTY test catches. Assert `\x1b` is absent from non-TTY output.
 
@@ -70,11 +70,32 @@ Three Nest majors for `@nestjs/common`, because packaging changed across them an
 Runs in CI on every commit.
 
 ```
-scripts/bench.ts
-  → spawn the built binary N=20 times
-  → discard first 3 (page cache warmup)
+scripts/bench.ts [--budget=ms] [--cwd=dir] [query]
+  → fresh, empty XDG_CACHE_HOME and XDG_DATA_HOME for the whole invocation
+  → spawn the built binary N=20 times from --cwd
+  → discard first 3 (page cache warmup — and, for a symbol query, the one cold extraction)
   → report median and p95
   → exit 1 if median exceeds the threshold
 ```
 
-Thresholds live in the `--budget` argument at each call site in `scripts/bench.ts`'s own usage and in CI.
+Thresholds live in the `--budget` argument at each call site in CI (`.github/workflows/ci.yml`, mirrored in `publish.yml`):
+
+| Call | Path measured | Budget |
+|---|---|---|
+| `bench` | `--version` — process start plus CLI framework, the floor | 60 ms |
+| `bench -- --budget=150 interceptors` | guide lookup | 150 ms |
+| `bench -- --budget=150 --cwd=test/fixtures common.Injectable` | symbol lookup, cached live `node_modules` | 150 ms |
+| `bench -- --budget=150 --cwd=test/fixtures throttler.Throttle` | symbol lookup, bundled fallback (ADR-0010) | 150 ms |
+
+---
+
+## Scope conformance
+
+`npm run verify:scope` (`scripts/verify-scope.ts`) checks the tool against real installs of the whole official `@nestjs/*` scope, using the TypeScript checker as an independent oracle. For each of the three latest Nest majors (or `--majors=10,11,12`) it installs the newest release of every official package built for that major — chosen by each package's declared `@nestjs/common` peer range — into its own project, then for every entry point (each package root plus every subpath its exports map names) asserts:
+
+1. our entry file is the one `ts.resolveModuleName` (NodeNext) resolves;
+2. our export list equals `checker.getExportsOfModule`, name for name;
+3. every export the checker sees a doc comment on has one in our record;
+4. `nest-doc <entry>` and `nest-doc <entry>.<name>` exit 0 with the right header, for every export.
+
+It's networked and takes a couple of minutes, so it isn't part of `npm test` or CI — run it before a release, and after any change to resolution or extraction. Last run (2026-11-01): Nest 10, 11, 12 — 118 entry points, 4,144 exports, 4,262 CLI lookups, zero differences.

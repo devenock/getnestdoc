@@ -122,7 +122,8 @@ export function resolveRenderOptions(): RenderOptions {
   const forceColor = process.env.FORCE_COLOR !== undefined;
 
   const color = forceColor ? true : noColor ? false : isTTY;
-  const width = isTTY ? Math.max(40, Math.min(process.stdout.columns || 100, 100)) : 80;
+  // Capped at 100, floored at 40; 80 when the terminal doesn't report a width, same as when it isn't a terminal.
+  const width = isTTY ? Math.max(40, Math.min(process.stdout.columns || 80, 100)) : 80;
 
   return { width, color };
 }

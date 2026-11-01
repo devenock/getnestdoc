@@ -20,7 +20,6 @@ const USAGE_ERROR_CODES = new Set([
 ]);
 
 const program = createProgram(DATA_DIR);
-program.exitOverride();
 
 try {
   // parseAsync, not parse: the action handler is async, and plain parse() would let main() return before it settles.

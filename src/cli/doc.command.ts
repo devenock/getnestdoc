@@ -1,18 +1,20 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import pkg from "../../package.json" with { type: "json" };
 import { resolveRenderOptions } from "../core/render/ansi.ts";
 import { renderTokens } from "../core/render/markdown.ts";
 import { suggest } from "../core/fuzzy.ts";
 import { writeOutput } from "../core/pager.ts";
 import { loadAliases } from "../nest/aliases.ts";
-import { findGuide, loadGuides } from "../nest/guides/index.ts";
+import { findGuideSection, loadGuides } from "../nest/guides/index.ts";
 import { resolvePackageSymbolsOrBundled } from "../nest/symbols.ts";
 import { loadNameIndex, resolveBareSymbol } from "../nest/names.ts";
 import { getCacheDir } from "../core/cache/paths.ts";
 import { clearCache } from "../core/cache/store.ts";
 import { renderSymbol } from "../nest/render-symbol.ts";
 import { renderPackageIndex } from "../nest/render-package-index.ts";
-import { runUpdate } from "../nest/update.ts";
+import { activeGuideDataDir, runUpdate } from "../nest/update.ts";
+import { shorthandFor } from "../nest/package-scope.ts";
+import { splitModuleSpecifier } from "../core/resolve/specifier.ts";
 import type { GuidesFile } from "../nest/guides/types.ts";
 import type { AliasFile } from "../nest/aliases.ts";
 import type { RenderOptions } from "../core/render/ansi.ts";
@@ -34,20 +36,55 @@ function classifyAtQuery(query: string): AtClassification {
   return { kind: "invalid" };
 }
 
-async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string, dataDir: string): Promise<{ output: string } | { error: string; exitCode: number } | { notInstalled: true; packageName: string } | undefined> {
+type IndexResult =
+  | { output: string }
+  | { error: string; exitCode: number }
+  | { notInstalled: true; packageName: string; installName: string }
+  | { miss: { headline: string; suggestions: string[] } };
+
+async function renderPackageIndexForQuery(packageQuery: string, all: boolean, options: RenderOptions, cwd: string, dataDir: string): Promise<IndexResult> {
   const resolved = await resolvePackageSymbolsOrBundled(packageQuery, cwd, dataDir);
-  if (resolved.status === "not-installed") return { notInstalled: true, packageName: resolved.packageName };
+  if (resolved.status === "not-installed") return { notInstalled: true, packageName: resolved.packageName, installName: resolved.installName };
   if (resolved.status === "unusable") return { error: resolved.message, exitCode: 3 };
-  const output = renderPackageIndex(resolved.result.packageName, resolved.result.packageVersion, resolved.result.symbols, all, options);
-  return { output: resolved.result.bundled ? `${output}\n\n${bundledNote(resolved.result.packageName, resolved.result.packageVersion)}` : output };
+  if (resolved.status === "no-entry-point") return { miss: noEntryPointMiss(resolved) };
+  const { packageName, packageVersion, symbols, entryPoints, bundled } = resolved.result;
+  const output = renderPackageIndex(packageName, packageVersion, symbols, all, options, entryPoints);
+  return { output: bundled ? `${output}\n\n${bundledNote(packageName, packageVersion)}` : output };
+}
+
+async function writeIndexResult(result: IndexResult): Promise<void> {
+  if ("notInstalled" in result) await writeOutput(notInstalledMessage(result.installName));
+  else if ("miss" in result) writeMiss(result.miss.headline, result.miss.suggestions);
+  else if ("error" in result) {
+    process.stderr.write(`${result.error}\n`);
+    process.exitCode = result.exitCode;
+  } else await writeOutput(result.output);
+}
+
+// The package is there but doesn't export that subpath; the suggestions are the entry points it does name.
+function noEntryPointMiss(r: { packageName: string; packageVersion: string; subpath: string; entryPoints: string[] }): { headline: string; suggestions: string[] } {
+  const shorthand = shorthandFor(r.packageName);
+  return { headline: `${r.packageName}@${r.packageVersion} has no "./${r.subpath}" entry point.`, suggestions: r.entryPoints.map((e) => `${shorthand}/${e}`) };
 }
 
 function notInstalledMessage(packageName: string): string {
   return `"${packageName}" isn't installed here. Try \`npm i ${packageName}\`.`;
 }
 
+// `npm i` takes the package, never a subpath of it.
 function bundledNote(packageName: string, packageVersion: string): string {
-  return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${packageName}\` to match your own version)`;
+  const installName = splitModuleSpecifier(packageName).packageName;
+  return `(bundled reference docs for ${packageName}@${packageVersion} — not installed in this project; run \`npm i ${installName}\` to match your own version)`;
+}
+
+// Writes a miss to stderr, so piped stdout stays empty, and exits 1.
+function writeMiss(headline: string, suggestions: string[]): void {
+  process.stderr.write(`${headline}\n`);
+  if (suggestions.length > 0) {
+    process.stderr.write("\nDid you mean?\n");
+    for (const s of suggestions) process.stderr.write(`  nest-doc ${s}\n`);
+  }
+  process.exitCode = 1;
 }
 
 function renderAmbiguous(name: string, packageNames: string[]): string {
@@ -57,9 +94,20 @@ function renderAmbiguous(name: string, packageNames: string[]): string {
   return lines.join("\n");
 }
 
-async function renderBareSymbolQuery(name: string, dataDir: string, cwd: string, guidesFile: GuidesFile, aliasFile: AliasFile, options: RenderOptions): Promise<{ output: string; exitCode: 0 | 1 } | undefined> {
+async function renderBareSymbolQuery(
+  name: string,
+  dataDir: string,
+  cwd: string,
+  guidesFile: GuidesFile,
+  aliasFile: AliasFile,
+  options: RenderOptions,
+): Promise<{ output: string; exitCode: 0 | 1 } | { error: string; exitCode: 1 | 3 } | undefined> {
   const resolved = await resolveBareSymbol(name, dataDir, cwd);
   if (resolved.status === "not-found") return undefined;
+  if (resolved.status === "unusable") return { error: resolved.message, exitCode: 3 };
+  if (resolved.status === "missing-from-installed") {
+    return { error: `"${resolved.name}" is exported by ${resolved.packageName}, but not by the ${resolved.packageVersion} installed here.`, exitCode: 1 };
+  }
   if (resolved.status === "ambiguous") return { output: renderAmbiguous(name, resolved.packageNames), exitCode: 1 };
   if (resolved.status === "not-installed") {
     return { output: `"${resolved.name}" is exported by ${resolved.packageName}, which isn't installed here. Try \`npm i ${resolved.packageName}\`.`, exitCode: 0 };
@@ -68,17 +116,26 @@ async function renderBareSymbolQuery(name: string, dataDir: string, cwd: string,
   return { output: resolved.bundled ? `${output}\n\n${bundledNote(resolved.packageName, resolved.packageVersion)}` : output, exitCode: 0 };
 }
 
+async function writeBareResult(result: { output: string; exitCode: 0 | 1 } | { error: string; exitCode: 1 | 3 }): Promise<void> {
+  if ("error" in result) process.stderr.write(`${result.error}\n`);
+  else await writeOutput(result.output);
+  process.exitCode = result.exitCode;
+}
+
 export function createProgram(dataDir: string): Command {
   const program = new Command();
+  // Throws instead of exiting so main.ts can map usage errors to exit 2; must precede `.command()`, since commander copies it into a subcommand only at creation.
+  program.exitOverride();
 
   program
     .name("nest-doc")
     .description("A terminal documentation reader for NestJS.")
     .version(pkg.version, "-v, --version", "output the version number")
-    .argument("[query]", "guide slug, concept name, package name, package.Symbol, @Decorator, or bare symbol name")
+    .argument("[query]", "guide slug (or slug#section), concept name, package name, package.Symbol, @Decorator, or bare symbol name")
     .option("--js", "show JavaScript code samples instead of TypeScript")
-    .option("--guide", "force guide resolution (steps 1-2 only)")
-    .option("--api", "force package/symbol resolution (steps 3-5 only)")
+    // Mutually exclusive: together they'd skip every resolution step and report a miss for any query.
+    .addOption(new Option("--guide", "force guide resolution (steps 1-2 only)").conflicts("api"))
+    .addOption(new Option("--api", "force package/symbol resolution (steps 3-5 only)").conflicts("guide"))
     .option("--all", "include non-public exports in a package index")
     .option("--clear-cache", "delete the extracted-symbol cache")
     .action(async (query: string | undefined, opts: { js?: boolean; guide?: boolean; api?: boolean; all?: boolean; clearCache?: boolean }) => {
@@ -93,16 +150,20 @@ export function createProgram(dataDir: string): Command {
         return;
       }
 
-      const guidesFile = loadGuides(dataDir);
-      const aliasFile = loadAliases(dataDir);
+      const guideDataDir = activeGuideDataDir(dataDir, pkg.version);
+      const guidesFile = loadGuides(guideDataDir);
+      const aliasFile = loadAliases(guideDataDir);
       const cwd = process.cwd();
       const renderOptions = resolveRenderOptions();
 
       if (!opts.api) {
-        const guide = findGuide(query, guidesFile, aliasFile);
-        if (guide) {
+        const lookup = findGuideSection(query, guidesFile, aliasFile);
+        if (lookup) {
+          if (lookup.missingAnchor !== undefined) {
+            process.stderr.write(`No section "#${lookup.missingAnchor}" in ${lookup.guide.slug}; showing the whole guide.\n`);
+          }
           const guideRenderOptions = { ...renderOptions, js: opts.js === true };
-          await writeOutput(renderTokens(guide.tokens, guideRenderOptions));
+          await writeOutput(renderTokens(lookup.tokens, guideRenderOptions));
           return;
         }
       }
@@ -120,12 +181,30 @@ export function createProgram(dataDir: string): Command {
           }
 
           if (resolved.status === "found") {
-            const symbol = resolved.result.symbols.find((s) => s.name === split.symbolName);
+            const { packageName, packageVersion, symbols, bundled } = resolved.result;
+            const symbol = symbols.find((s) => s.name === split.symbolName);
             if (symbol) {
-              const symbolOutput = renderSymbol(resolved.result.packageName, resolved.result.packageVersion, symbol, guidesFile, aliasFile, renderOptions);
-              await writeOutput(resolved.result.bundled ? `${symbolOutput}\n\n${bundledNote(resolved.result.packageName, resolved.result.packageVersion)}` : symbolOutput);
+              const symbolOutput = renderSymbol(packageName, packageVersion, symbol, guidesFile, aliasFile, renderOptions);
+              await writeOutput(bundled ? `${symbolOutput}\n\n${bundledNote(packageName, packageVersion)}` : symbolOutput);
               return;
             }
+
+            // The package resolved but lacks the export: a definitive miss with near matches from its own exports, unless the whole dotted query is itself a package name.
+            if ((await resolvePackageSymbolsOrBundled(query, cwd, dataDir)).status !== "found") {
+              const prefix = shorthandFor(packageName);
+              writeMiss(
+                `No export "${split.symbolName}" in ${packageName}@${packageVersion}.`,
+                suggest(split.symbolName, symbols.map((s) => s.name)).map((name) => `${prefix}.${name}`),
+              );
+              return;
+            }
+          }
+
+          // Same rule for a subpath the package doesn't export ("@nestjs/common/nope.Foo"), unless the whole query is a deep path that does resolve.
+          if (resolved.status === "no-entry-point" && (await resolvePackageSymbolsOrBundled(query, cwd, dataDir)).status !== "found") {
+            const miss = noEntryPointMiss(resolved);
+            writeMiss(miss.headline, miss.suggestions);
+            return;
           }
         }
 
@@ -144,23 +223,12 @@ export function createProgram(dataDir: string): Command {
           }
 
           if (classified.kind === "package") {
-            const result = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir);
-            if (result) {
-              if ("notInstalled" in result) {
-                await writeOutput(notInstalledMessage(result.packageName));
-              } else if ("error" in result) {
-                process.stderr.write(`${result.error}\n`);
-                process.exitCode = result.exitCode;
-              } else {
-                await writeOutput(result.output);
-              }
-              return;
-            }
+            await writeIndexResult(await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir));
+            return;
           } else {
             const bare = await renderBareSymbolQuery(classified.name, dataDir, cwd, guidesFile, aliasFile, renderOptions);
             if (bare) {
-              await writeOutput(bare.output);
-              process.exitCode = bare.exitCode;
+              await writeBareResult(bare);
               return;
             }
           }
@@ -168,37 +236,24 @@ export function createProgram(dataDir: string): Command {
           const indexResult = await renderPackageIndexForQuery(query, opts.all === true, renderOptions, cwd, dataDir);
           // A recognised shorthand (e.g. "throttler" -> "@nestjs/throttler") that isn't installed gets the helpful
           // message below; an unrecognised bare word falls through to bare-symbol lookup and the suggestions below that.
-          const isUnrecognisedShorthand = indexResult && "notInstalled" in indexResult && indexResult.packageName === query;
-          if (indexResult && !isUnrecognisedShorthand) {
-            if ("notInstalled" in indexResult) {
-              await writeOutput(notInstalledMessage(indexResult.packageName));
-            } else if ("error" in indexResult) {
-              process.stderr.write(`${indexResult.error}\n`);
-              process.exitCode = indexResult.exitCode;
-            } else {
-              await writeOutput(indexResult.output);
-            }
+          const isUnrecognisedShorthand = "notInstalled" in indexResult && indexResult.packageName === query;
+          if (!isUnrecognisedShorthand) {
+            await writeIndexResult(indexResult);
             return;
           }
 
           const bare = await renderBareSymbolQuery(query, dataDir, cwd, guidesFile, aliasFile, renderOptions);
           if (bare) {
-            await writeOutput(bare.output);
-            process.exitCode = bare.exitCode;
+            await writeBareResult(bare);
             return;
           }
         }
       }
 
+      // Symbol names are only candidates when symbols were in scope for this query.
       const candidates = [...Object.keys(guidesFile.guides), ...Object.keys(aliasFile.urlToSlug)];
-      const suggestions = suggest(query, candidates);
-
-      process.stderr.write(`No guide or symbol matches "${query}".\n`);
-      if (suggestions.length > 0) {
-        process.stderr.write("\nDid you mean?\n");
-        for (const s of suggestions) process.stderr.write(`  nest-doc ${s}\n`);
-      }
-      process.exitCode = 1;
+      if (!opts.guide) candidates.push(...Object.keys(loadNameIndex(dataDir).names));
+      writeMiss(`No guide or symbol matches "${query}".`, suggest(query, candidates));
     });
 
   program
@@ -206,8 +261,8 @@ export function createProgram(dataDir: string): Command {
     .description("refresh the guide corpus from docs.nestjs.com (the only networked command)")
     .action(async () => {
       process.stdout.write("Fetching latest guides from docs.nestjs.com...\n");
-      const result = await runUpdate(dataDir);
-      process.stdout.write(`Updated: ${result.guideCount} guides, ${result.aliasCount} aliases (commit ${result.sourceCommit.slice(0, 7)}).\n`);
+      const result = await runUpdate(pkg.version);
+      process.stdout.write(`Updated: ${result.guideCount} guides, ${result.aliasCount} aliases (commit ${result.sourceCommit.slice(0, 7)}), stored in ${result.dataDir}.\n`);
     });
 
   return program;

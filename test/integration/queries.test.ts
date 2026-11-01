@@ -1,0 +1,393 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isolatedEnv } from "../helpers/env.ts";
+
+const BIN = fileURLToPath(new URL("../../dist/nest-doc.mjs", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+function run(args: string[], cwd = REPO_ROOT) {
+  const cacheDir = mkdtempSync(join(tmpdir(), "getnestdoc-queries-cache-"));
+  try {
+    return spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: isolatedEnv({ XDG_CACHE_HOME: cacheDir }) });
+  } finally {
+    rmSync(cacheDir, { recursive: true, force: true });
+  }
+}
+
+// A throwaway project with a .git boundary, so the upward node_modules walk never leaves it.
+// `files` maps project-relative paths to contents.
+function withScratchProject(files: Record<string, string>, body: (projectDir: string) => void): void {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-queries-project-"));
+  try {
+    mkdirSync(join(root, ".git"));
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    body(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// Every data file is a JSON-loaded plain object, so `record[query]` used to resolve Object.prototype members:
+// "constructor" rendered an empty guide and exited 0, "toString --api" crashed with exit 4.
+test("Object.prototype member names are ordinary misses, never a blank render or a crash", () => {
+  for (const args of [["constructor"], ["__proto__"], ["toString", "--api"], ["hasOwnProperty", "--api"], ["valueOf", "--guide"]]) {
+    const result = run(args);
+    assert.equal(result.status, 1, `nest-doc ${args.join(" ")}: expected exit 1, got ${result.status}. stderr: ${result.stderr}`);
+    assert.equal(result.stdout, "", `nest-doc ${args.join(" ")}: expected empty stdout`);
+    assert.match(result.stderr, /No guide or symbol matches/);
+  }
+});
+
+// package.json is third-party input (ADR-0009). A malformed one used to escape as an uncaught SyntaxError (exit 4,
+// stack trace); a wrongly-typed field (`"types": 5`) as a TypeError from path.join.
+test("an installed package with a malformed package.json is reported as unusable (exit 3), not a crash", () => {
+  withScratchProject({ "node_modules/broken-json/package.json": '{"name": "broken-json",' }, (projectDir) => {
+    const result = run(["broken-json"], projectDir);
+    assert.equal(result.status, 3, `expected exit 3, got ${result.status}. stderr: ${result.stderr}`);
+    assert.match(result.stderr, /"broken-json" is installed but its package\.json is not valid JSON/);
+    assert.doesNotMatch(result.stderr, /SyntaxError|\n\s+at /);
+  });
+});
+
+test("wrongly-typed package.json fields are ignored rather than crashing resolution", () => {
+  withScratchProject(
+    {
+      "node_modules/odd-types/package.json": JSON.stringify({ name: "odd-types", version: { major: 1 }, types: 5, main: ["x"] }),
+      "node_modules/odd-types/index.d.ts": "export declare function stillFound(): void;\n",
+    },
+    (projectDir) => {
+      const result = run(["odd-types"], projectDir);
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^odd-types@0\.0\.0$/m);
+      assert.match(result.stdout, /stillFound/);
+    },
+  );
+});
+
+// Rendered guides print internal links as `nest-doc <slug>#<anchor>` (121 of them in the shipped corpus), but the
+// lookup had no `#` handling, so every one of those printed commands was a miss.
+test("nest-doc <slug>#<anchor> prints just that section, up to the next heading of the same depth", () => {
+  const result = run(["interceptors#binding-interceptors"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /^Binding interceptors\n/);
+  assert.match(result.stdout, /UseInterceptors/);
+  assert.doesNotMatch(result.stdout, /^Basics$/m, "content before the section leaked in");
+  assert.doesNotMatch(result.stdout, /^Response mapping$/m, "the next same-depth section leaked in");
+});
+
+test("an anchor written without the heading's punctuation still finds the section", () => {
+  const result = run(["fundamentals/dependency-injection#factory-providers-usefactory"]);
+  assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+  assert.match(result.stdout, /^Factory providers: useFactory\n/);
+});
+
+test("an anchor no heading matches prints the whole guide with a note on stderr, never a miss", () => {
+  const result = run(["techniques/configuration#service"]);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /No section "#service" in techniques\/configuration; showing the whole guide\./);
+  assert.match(result.stdout, /^Configuration\n/);
+});
+
+// Together they skipped every resolution step, so any query — even an exact guide slug — was reported as a miss
+// (exit 1) with a "did you mean" pointing at the very slug typed.
+test("--guide and --api together are a usage error (exit 2), not a false miss", () => {
+  const result = run(["interceptors", "--guide", "--api"]);
+  assert.equal(result.status, 2, `stderr: ${result.stderr}`);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /cannot be used with/);
+});
+
+// exitOverride() was applied after the `update` subcommand was created, and commander only copies it into
+// subcommands at creation — so `update`'s usage errors exited 1 ("not found") instead of 2.
+test("usage errors on the update subcommand exit 2, like the root command's", () => {
+  for (const args of [["update", "--bogus"], ["update", "extra-arg"]]) {
+    const result = run(args);
+    assert.equal(result.status, 2, `nest-doc ${args.join(" ")}: expected exit 2, got ${result.status}. stderr: ${result.stderr}`);
+    assert.doesNotMatch(result.stdout, /Fetching/, "must fail before any network access");
+  }
+});
+
+const FIXTURES_ROOT = fileURLToPath(new URL("../fixtures", import.meta.url));
+
+// A typo in an existing package's export used to fall through every step: `common.Injectible` ended in a generic miss
+// suggesting only guide slugs, and `@nestjs/common.Injectible` claimed the package wasn't installed and exited 0.
+test("a missing export in an installed package is a miss with near matches from that package's exports", () => {
+  for (const query of ["common.Injectible", "@nestjs/common.Injectible"]) {
+    const result = run([query], FIXTURES_ROOT);
+    assert.equal(result.status, 1, `${query}: expected exit 1, got ${result.status}. stdout: ${result.stdout}`);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /^No export "Injectible" in @nestjs\/common@12\.0\.1\./);
+    assert.match(result.stderr, /Did you mean\?\n {2}nest-doc common\.Injectable\n/);
+  }
+});
+
+test("a missing export in a bundled (not installed) package gets the same treatment", () => {
+  const result = run(["throttler.Throtle"], FIXTURES_ROOT);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /^No export "Throtle" in @nestjs\/throttler@/);
+  assert.match(result.stderr, /nest-doc throttler\.Throttle/);
+});
+
+test("a bare-symbol typo suggests symbol names from the index, not only guide slugs", () => {
+  const result = run(["Injectible"], FIXTURES_ROOT);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /No guide or symbol matches "Injectible"/);
+  assert.match(result.stderr, /nest-doc Injectable\n/);
+});
+
+test("a dotted query that is itself an installed package name still resolves as that package", () => {
+  withScratchProject(
+    {
+      "node_modules/socket/package.json": JSON.stringify({ name: "socket", version: "1.0.0", types: "index.d.ts" }),
+      "node_modules/socket/index.d.ts": "export declare const plain: 1;\n",
+      "node_modules/socket.io/package.json": JSON.stringify({ name: "socket.io", version: "2.0.0", types: "index.d.ts" }),
+      "node_modules/socket.io/index.d.ts": "export declare class Server {}\n",
+    },
+    (projectDir) => {
+      const result = run(["socket.io"], projectDir);
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^socket\.io@2\.0\.0$/m);
+      assert.match(result.stdout, /Server/);
+    },
+  );
+});
+
+// Runs the binary with a cache directory the test can inspect afterwards — a written cache entry is proof that a
+// package was extracted.
+function runKeepingCache(args: string[], cwd: string): { status: number | null; stderr: string; cached: string[] } {
+  const cacheHome = mkdtempSync(join(tmpdir(), "getnestdoc-queries-cache-"));
+  try {
+    const result = spawnSync(process.execPath, [BIN, ...args], { encoding: "utf8", cwd, env: isolatedEnv({ XDG_CACHE_HOME: cacheHome }) });
+    const cacheDir = join(cacheHome, "getnestdoc");
+    return { status: result.status, stderr: result.stderr, cached: existsSync(cacheDir) ? readdirSync(cacheDir).sort() : [] };
+  } finally {
+    rmSync(cacheHome, { recursive: true, force: true });
+  }
+}
+
+// Every bare-word miss runs the installed-package scan, and it used to cold-extract every installed @nestjs/* package
+// (measured ~460 ms for the five fixtures — a typo blew the 150 ms budget three times over).
+test("a bare-word miss skips installed packages already covered by the bundled index at the same version", () => {
+  const bundled = JSON.parse(readFileSync(join(REPO_ROOT, "data", "packages.json"), "utf8")) as { packages: Record<string, { packageVersion: string }> };
+  const bundledCommon = bundled.packages["@nestjs/common"]!.packageVersion;
+  const pkg = (name: string, version: string) => ({
+    [`node_modules/${name}/package.json`]: JSON.stringify({ name, version, types: "index.d.ts" }),
+    [`node_modules/${name}/index.d.ts`]: "export declare const placeholder: 1;\n",
+  });
+  withScratchProject({ ...pkg("@nestjs/common", bundledCommon), ...pkg("@nestjs/core", "99.0.0") }, (projectDir) => {
+    const result = runKeepingCache(["Xyzzy"], projectDir);
+    assert.equal(result.status, 1);
+    // common matches data/packages.json exactly, so the index already answers for it; core@99 isn't what was bundled.
+    assert.deepEqual(result.cached, ["@nestjs+core@99.0.0.json"]);
+  });
+});
+
+test("a name only an installed newer version exports is still found by the scan", () => {
+  withScratchProject(
+    {
+      "node_modules/@nestjs/common/package.json": JSON.stringify({ name: "@nestjs/common", version: "99.0.0", types: "index.d.ts" }),
+      "node_modules/@nestjs/common/index.d.ts": "/** Added in 99. @publicApi */\nexport declare function BrandNewDecorator(): ClassDecorator;\n",
+    },
+    (projectDir) => {
+      const result = run(["BrandNewDecorator"], projectDir);
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^@nestjs\/common@99\.0\.0$/m);
+      assert.match(result.stdout, /function BrandNewDecorator\(\): ClassDecorator/);
+    },
+  );
+});
+
+// pnpm (and workspaces, `npm link`) install node_modules/@nestjs/<pkg> as a symlink; the scan filtered on
+// Dirent.isDirectory(), which is false for a symlink, so a name only the installed version exports was never found.
+test("the fallback scan also covers symlinked packages (pnpm layout)", () => {
+  withScratchProject(
+    {
+      "store/common/package.json": JSON.stringify({ name: "@nestjs/common", version: "99.0.0", types: "index.d.ts" }),
+      "store/common/index.d.ts": "export declare function LinkedOnly(): ClassDecorator;\n",
+    },
+    (projectDir) => {
+      mkdirSync(join(projectDir, "node_modules", "@nestjs"), { recursive: true });
+      symlinkSync(join(projectDir, "store", "common"), join(projectDir, "node_modules", "@nestjs", "common"));
+      const result = run(["LinkedOnly"], projectDir);
+      assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+      assert.match(result.stdout, /function LinkedOnly\(\): ClassDecorator/);
+    },
+  );
+});
+
+// resolveBareSymbol mapped every non-"found" outcome to "not-installed", so an installed package with no types, or
+// an installed version that doesn't export the name, both claimed the package "isn't installed here" and exited 0.
+test("a bare symbol whose package is installed but unusable reports that (exit 3), not \"isn't installed\"", () => {
+  withScratchProject({ "node_modules/@nestjs/throttler/package.json": JSON.stringify({ name: "@nestjs/throttler", version: "6.5.0", main: "index.js" }) }, (projectDir) => {
+    const result = run(["Throttle"], projectDir);
+    assert.equal(result.status, 3, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+    assert.match(result.stderr, /"@nestjs\/throttler" is installed but ships no type declarations/);
+    assert.doesNotMatch(result.stdout + result.stderr, /isn't installed/);
+  });
+});
+
+test("a bare symbol the installed version doesn't export says so (exit 1), not \"isn't installed\"", () => {
+  withScratchProject(
+    {
+      "node_modules/@nestjs/jwt/package.json": JSON.stringify({ name: "@nestjs/jwt", version: "1.0.0", types: "index.d.ts" }),
+      "node_modules/@nestjs/jwt/index.d.ts": "export declare class SomethingElse {}\n",
+    },
+    (projectDir) => {
+      const result = run(["JwtService"], projectDir);
+      assert.equal(result.status, 1, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /^"JwtService" is exported by @nestjs\/jwt, but not by the 1\.0\.0 installed here\.$/m);
+    },
+  );
+});
+
+// `nest-doc update` used to write into the package's own data/ directory: EACCES (exit 4, stack trace) for a
+// root-owned global install — verified — and silently discarded by the next reinstall. ADR-0013: it writes to
+// $XDG_DATA_HOME/getnestdoc/<tool version>/, which guide lookups prefer when both files are there.
+test("guide lookups prefer an updated corpus in the per-user, per-version data directory", async () => {
+  const { version } = (await import("../../package.json", { with: { type: "json" } })).default;
+  const dataHome = mkdtempSync(join(tmpdir(), "getnestdoc-data-home-"));
+  try {
+    const guides = JSON.parse(readFileSync(join(REPO_ROOT, "data", "guides.json"), "utf8"));
+    guides.guides.interceptors.tokens = [{ type: "paragraph", text: "UPDATED CORPUS", tokens: [{ type: "text", text: "UPDATED CORPUS" }] }];
+    const env = (versionDir: string, files: string[]) => {
+      rmSync(join(dataHome, "getnestdoc"), { recursive: true, force: true });
+      const dir = join(dataHome, "getnestdoc", versionDir);
+      mkdirSync(dir, { recursive: true });
+      if (files.includes("guides")) writeFileSync(join(dir, "guides.json"), JSON.stringify(guides));
+      if (files.includes("aliases")) copyFileSync(join(REPO_ROOT, "data", "aliases.json"), join(dir, "aliases.json"));
+      return { ...isolatedEnv(), XDG_DATA_HOME: dataHome };
+    };
+    const lookup = (e: NodeJS.ProcessEnv) => spawnSync(process.execPath, [BIN, "interceptors"], { encoding: "utf8", env: e }).stdout;
+
+    assert.match(lookup(env(version, ["guides", "aliases"])), /^UPDATED CORPUS$/m, "this version's update should be used");
+    assert.doesNotMatch(lookup(env(version, ["guides"])), /UPDATED CORPUS/, "a half-written pair must fall back to the release corpus");
+    assert.doesNotMatch(lookup(env("0.0.0-older", ["guides", "aliases"])), /UPDATED CORPUS/, "another version's update must not shadow this release");
+  } finally {
+    rmSync(dataHome, { recursive: true, force: true });
+  }
+});
+
+// The global fallback derived the root from process.execPath only. Under Homebrew that resolves into the Cellar
+// (`<prefix>/Cellar/node/<v>/bin/node`), so `<prefix>/lib/node_modules` — where every global package, nest-doc
+// included, actually lives — was never searched. The running script's own node_modules is that directory.
+test("a globally installed package is found via the node_modules nest-doc itself is installed in", () => {
+  const prefix = mkdtempSync(join(tmpdir(), "getnestdoc-global-prefix-"));
+  try {
+    const globalRoot = join(prefix, "lib", "node_modules");
+    const self = join(globalRoot, "getnestdoc");
+    mkdirSync(join(self, "dist"), { recursive: true });
+    copyFileSync(BIN, join(self, "dist", "nest-doc.mjs"));
+    copyFileSync(join(REPO_ROOT, "package.json"), join(self, "package.json"));
+    symlinkSync(join(REPO_ROOT, "data"), join(self, "data"));
+    symlinkSync(join(REPO_ROOT, "node_modules"), join(self, "node_modules"));
+    mkdirSync(join(globalRoot, "global-only"), { recursive: true });
+    writeFileSync(join(globalRoot, "global-only", "package.json"), JSON.stringify({ name: "global-only", version: "3.0.0", types: "index.d.ts" }));
+    writeFileSync(join(globalRoot, "global-only", "index.d.ts"), "export declare function fromGlobal(): void;\n");
+    mkdirSync(join(prefix, "bin"));
+    symlinkSync(join(self, "dist", "nest-doc.mjs"), join(prefix, "bin", "nest-doc"));
+
+    withScratchProject({}, (projectDir) => {
+      const result = spawnSync(process.execPath, [join(prefix, "bin", "nest-doc"), "global-only"], { encoding: "utf8", cwd: projectDir, env: isolatedEnv({ XDG_CACHE_HOME: join(projectDir, "cache") }) });
+      assert.equal(result.status, 0, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+      assert.match(result.stdout, /^global-only@3\.0\.0$/m);
+      assert.match(result.stdout, /fromGlobal/);
+    });
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
+  }
+});
+
+// Named subpath entry points (Nest 12's @nestjs/platform-fastify/multipart, @nestjs/common/internal, the swagger and
+// graphql ./plugin) were unreachable: `nest-doc @nestjs/platform-fastify/multipart` claimed the package wasn't installed.
+test("subpath entry points: index, symbol, shorthand, listing on the root index, and a miss for an undeclared one", () => {
+  withScratchProject(
+    {
+      "node_modules/@nestjs/platform-fastify/package.json": JSON.stringify({
+        name: "@nestjs/platform-fastify",
+        version: "12.9.0",
+        exports: { ".": "./index.js", "./multipart": "./multipart/index.js", "./*": "./*.js", "./package.json": "./package.json" },
+      }),
+      "node_modules/@nestjs/platform-fastify/index.d.ts": "export declare class FastifyAdapter {}\n",
+      "node_modules/@nestjs/platform-fastify/multipart/index.d.ts": "/** Uploads one file. @publicApi */\nexport declare function FileStreamInterceptor(field: string): unknown;\n",
+    },
+    (projectDir) => {
+      const index = run(["@nestjs/platform-fastify/multipart"], projectDir);
+      assert.equal(index.status, 0, index.stderr);
+      assert.match(index.stdout, /^@nestjs\/platform-fastify\/multipart@12\.9\.0$/m);
+      assert.match(index.stdout, /FileStreamInterceptor\s+Uploads one file\./);
+
+      const symbol = run(["platform-fastify/multipart.FileStreamInterceptor"], projectDir);
+      assert.equal(symbol.status, 0, symbol.stderr);
+      assert.match(symbol.stdout, /function FileStreamInterceptor\(field: string\): unknown/);
+
+      const root = run(["@nestjs/platform-fastify"], projectDir);
+      assert.match(root.stdout, /^ENTRY POINTS\n {2}nest-doc platform-fastify\/multipart$/m);
+
+      const miss = run(["@nestjs/platform-fastify/nope"], projectDir);
+      assert.equal(miss.status, 1);
+      assert.match(miss.stderr, /^@nestjs\/platform-fastify@12\.9\.0 has no "\.\/nope" entry point\.\n\nDid you mean\?\n {2}nest-doc platform-fastify\/multipart$/m);
+    },
+  );
+});
+
+test("a guide-path typo containing a slash still gets guide suggestions, not a bogus npm hint", () => {
+  const result = run(["fundamentals/custom-provider"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /nest-doc fundamentals\/custom-providers/);
+  assert.doesNotMatch(result.stdout + result.stderr, /npm i/);
+});
+
+// Since @nestjs/platform-fastify@12.3 also exports FileInterceptor and friends, the bundled index lists two owners,
+// and a project with only platform-express installed got an ambiguity list for the name it was actually using.
+test("an ambiguous bare name resolves to its owner when exactly one owner is installed", () => {
+  const stub = (name: string) => ({
+    [`node_modules/${name}/package.json`]: JSON.stringify({ name, version: "12.3.2", types: "index.d.ts" }),
+    [`node_modules/${name}/index.d.ts`]: `/** The ${name.split("-").pop()} flavour. @publicApi */\nexport declare function FileInterceptor(field: string): unknown;\n`,
+  });
+  withScratchProject(stub("@nestjs/platform-express"), (projectDir) => {
+    const result = run(["FileInterceptor"], projectDir);
+    assert.equal(result.status, 0, `stdout: ${result.stdout} stderr: ${result.stderr}`);
+    assert.match(result.stdout, /^@nestjs\/platform-express@12\.3\.2$/m);
+    assert.match(result.stdout, /The express flavour\./);
+  });
+  withScratchProject({ ...stub("@nestjs/platform-express"), ...stub("@nestjs/platform-fastify") }, (projectDir) => {
+    const result = run(["FileInterceptor"], projectDir);
+    assert.equal(result.status, 1, "both installed is genuinely ambiguous");
+    assert.match(result.stdout, /ambiguous/);
+  });
+  withScratchProject({}, (projectDir) => {
+    assert.equal(run(["FileInterceptor"], projectDir).status, 1, "neither installed stays ambiguous");
+  });
+});
+
+// On case-insensitive filesystems (macOS, Windows), node_modules/Cron opens the `cron` npm package — so in a real
+// Nest project `nest-doc Cron --api` printed cron@4.4.0's index, `Process` claimed the `process` package "ships no
+// type declarations" (exit 3), and `EventEmitter2`/`LogLevel` hit `eventemitter2`/`loglevel` the same way.
+test("a capitalised symbol name never matches a differently-cased package directory", () => {
+  withScratchProject(
+    {
+      "node_modules/cron/package.json": JSON.stringify({ name: "cron", version: "4.4.0", types: "index.d.ts" }),
+      "node_modules/cron/index.d.ts": "export declare class CronJob {}\n",
+      "node_modules/process/package.json": JSON.stringify({ name: "process", version: "0.11.10", main: "index.js" }),
+    },
+    (projectDir) => {
+      const cron = run(["Cron", "--api"], projectDir);
+      assert.equal(cron.status, 0, cron.stderr);
+      assert.match(cron.stdout, /^@nestjs\/schedule@/m, "Cron is @nestjs/schedule's decorator");
+      const processSymbol = run(["Process", "--api"], projectDir);
+      assert.equal(processSymbol.status, 0, processSymbol.stderr);
+      assert.match(processSymbol.stdout, /^@nestjs\/bull(mq)?@/m);
+      assert.equal(run(["cron"], projectDir).stdout.split("\n")[0], "cron@4.4.0", "the exact lowercase name is still the package");
+    },
+  );
+});

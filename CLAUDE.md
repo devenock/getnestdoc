@@ -8,7 +8,7 @@ A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `n
 
 ## Constraints that are not negotiable
 
-**Latency budget is 150 ms.** This is the product, not a nice-to-have — the tool competes with alt-tabbing to a browser. Before adding any dependency, measure its bundled import cost. The CI benchmark fails the build on regression. Current headroom is roughly 30 ms.
+**Latency budget is 150 ms.** This is the product, not a nice-to-have — the tool competes with alt-tabbing to a browser. Before adding any dependency, measure its bundled import cost. The CI benchmark fails the build on regression. Hot paths (guide, cached symbol, bundled symbol) measure ~50 ms, so headroom is roughly 100 ms — see ARCHITECTURE.md §9.
 
 **`typescript` is pinned to `6.0.3` exactly.** Version 7 is the Go port and exports only `version` and `versionMajorMinor`. Do not widen this range. Do not "upgrade to latest". See ADR-0001.
 
@@ -18,7 +18,7 @@ A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `n
 
 **Parse, don't type-check.** Do not reintroduce `ts.createProgram` on the main path. It is 6.3× slower and produces worse signatures. See ADR-0002.
 
-**A package's `package.json` and `.d.ts` files are untrusted input, always.** Same trust level as a network response, not the CLI's own caller — anyone can publish an npm package. Never build a filesystem path from a package field without going through the same containment check `core/cache/paths.ts`/`core/extract/barrels.ts` already do; never add a new `SymbolRecord` string field without running it through `core/extract/sanitize.ts`. Three real, verified vulnerabilities (path traversal, barrel escape, terminal escape-sequence injection) came from skipping exactly this. See ADR-0009.
+**A package's `package.json` and `.d.ts` files are untrusted input, always.** Same trust level as a network response, not the CLI's own caller — anyone can publish an npm package. Never build a filesystem path from a package field without going through a containment check — `core/contain.ts` (real-path, used by entry resolution and the barrel walk) or `core/cache/paths.ts` (cache filenames); never add a new `SymbolRecord` string field without adding it to `sanitizeSymbolRecord` in `core/extract/sanitize.ts`. Four real, verified vulnerabilities (cache path traversal, barrel escape, entry-file escape via `types`, terminal escape-sequence injection) came from skipping exactly this. See ADR-0009.
 
 ## Things that look like bugs but aren't
 
@@ -27,9 +27,11 @@ A terminal documentation reader for NestJS. Installs as `getnestdoc`, runs as `n
 - **`@@switch` blocks show only TypeScript** by default. The JavaScript half is stored and shown under `--js`.
 - **Long output opens `less` instead of printing.** Only when stdout is a real TTY and the content is taller than it — piped/redirected output is never affected. Deliberate — ADR-0008.
 
-## Known trap
+## Known traps
 
 Barrel extraction must handle **both** `export * from './x.js'` and `export { A, B } from './y.js'`. Handling only the first yields 155 symbols instead of 206 and appears to work. If an export count test fails, this is the first place to look.
+
+Any change to what extraction produces for the same package version (fields, merging, naming) must bump `CACHE_FORMAT_VERSION` in `core/cache/store.ts` and regenerate the bundled data with `npm run build:packages -- --pin`. Cache entries are keyed by package version only, so without the bump users keep seeing the old extractor's output.
 
 ## Testing expectations
 
@@ -37,6 +39,7 @@ Barrel extraction must handle **both** `export * from './x.js'` and `export { A,
 - Resolution tested against Nest 10, 11, and 12 fixtures — packaging changed across those majors.
 - Extraction asserts exactly 206 exports for `@nestjs/common@12.0.1`.
 - Benchmark assertions run in CI on every commit.
+- Before a release, and after any change to resolution or extraction: `npm run verify:scope` — every export of the latest three Nest majors against the TypeScript checker, plus a real CLI lookup for each (TESTING.md).
 - Integration tests spawn the binary via `spawnSync`, never a TTY — the pager path (ADR-0008) is exercised only at the pure-decision level (`test/pager.test.ts`), not end-to-end.
 
 ## Style

@@ -1,8 +1,8 @@
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPackage } from "../src/core/extract/barrels.ts";
 import type { SymbolRecord } from "../src/core/extract/types.ts";
@@ -16,7 +16,7 @@ let extractionMs: number;
 
 before(async () => {
   const start = process.hrtime.bigint();
-  symbols = await extractPackage(ENTRY_FILE);
+  symbols = await extractPackage(ENTRY_FILE, dirname(ENTRY_FILE));
   extractionMs = Number(process.hrtime.bigint() - start) / 1e6;
 });
 
@@ -118,7 +118,7 @@ test("a barrel's export specifier cannot traverse outside the package's own dire
     mkdirSync(packageDir, { recursive: true });
     writeFileSync(join(packageDir, "index.d.ts"), `export * from "../secret-location/leaked.js";\n`);
 
-    const symbolsFromMaliciousBarrel = await extractPackage(join(packageDir, "index.d.ts"));
+    const symbolsFromMaliciousBarrel = await extractPackage(join(packageDir, "index.d.ts"), packageDir);
     assert.equal(symbolsFromMaliciousBarrel.length, 0, "a specifier resolving outside the package root must not be followed at all");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -145,10 +145,273 @@ test("a raw escape sequence embedded in a JSDoc comment never reaches the extrac
       `/**\n * innocuous docs ${esc}]0;PWNED-TITLE${bel} more text\n */\nexport declare function totallyNormal(): void;\n`,
     );
 
-    const [symbol] = await extractPackage(join(packageDir, "index.d.ts"));
+    const [symbol] = await extractPackage(join(packageDir, "index.d.ts"), packageDir);
     assert.ok(symbol, "totallyNormal not found");
     assert.ok(!symbol!.doc.includes(esc), `doc still contains a raw ESC byte: ${JSON.stringify(symbol!.doc)}`);
     assert.ok(!symbol!.doc.includes(bel), `doc still contains a raw BEL byte: ${JSON.stringify(symbol!.doc)}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an .mjs barrel specifier resolves to its .d.mts declaration file", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-mjs-barrel-test-"));
+  try {
+    writeFileSync(join(root, "index.d.mts"), `export * from "./thing.mjs";\n`);
+    writeFileSync(join(root, "thing.d.mts"), `export declare function fromMjs(): void;\n`);
+    const names = (await extractPackage(join(root, "index.d.mts"), root)).map((s) => s.name);
+    assert.deepEqual(names, ["fromMjs"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The containment root is now the package directory, not dirname(entryFile): a dist/ entry legitimately
+// re-exporting from a sibling directory of the same package must still be followed.
+test("a dist/ entry may re-export from elsewhere inside its own package, but never outside it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-package-root-test-"));
+  try {
+    const packageDir = join(root, "pkg");
+    mkdirSync(join(packageDir, "dist"), { recursive: true });
+    mkdirSync(join(packageDir, "types"), { recursive: true });
+    writeFileSync(join(packageDir, "dist", "index.d.ts"), `export * from "../types/shared.js";\nexport * from "../../outside.js";\n`);
+    writeFileSync(join(packageDir, "types", "shared.d.ts"), `export declare const shared: number;\n`);
+    writeFileSync(join(root, "outside.d.ts"), `export declare const outside: number;\n`);
+
+    const records = await extractPackage(join(packageDir, "dist", "index.d.ts"), packageDir);
+    assert.deepEqual(records.map((s) => s.name), ["shared"]);
+    assert.equal(records[0]!.file, join("types", "shared.d.ts"), "file is relative to the package root (SPEC.md §3)");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Overloads were keyed by name in a Map, so only the *last* declaration survived: `nest-doc common.Body` showed one
+// of Body's five signatures and only that overload's JSDoc. ADR-0011: overloads merge into one record.
+test("Body's five overloads merge into one record: every signature, the first overload's doc, every @param", () => {
+  const body = symbols.find((s) => s.name === "Body");
+  assert.ok(body, "Body not found");
+  assert.equal(body!.kind, "function");
+  const overloads = body!.signature.split("\n");
+  assert.equal(overloads.length, 5);
+  assert.equal(overloads[0], "export declare function Body(): ParameterDecorator;");
+  assert.equal(overloads[4], "export declare function Body(property: string, options: ParameterDecoratorOptions): ParameterDecorator;");
+  assert.match(body!.doc, /^Route handler parameter decorator\. Extracts the entire `body`\nobject from the `req` object/);
+  assert.deepEqual(
+    body!.tags.filter((t) => t.name === "param").map((t) => t.text.split(" ")[0]),
+    ["pipes", "options", "property"],
+    "each parameter appears once across overloads",
+  );
+  assert.deepEqual(body!.see.map((l) => l.url), ["https://docs.nestjs.com/controllers#request-object", "https://docs.nestjs.com/custom-decorators#working-with-pipes"]);
+  assert.equal(body!.isPublicApi, true);
+});
+
+// Writes a scratch package (path -> contents) and extracts it from index.d.ts, returning the record names.
+async function extractScratch(files: Record<string, string>): Promise<string[]> {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-barrel-shape-test-"));
+  try {
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    return (await extractPackage(join(root, "index.d.ts"), root)).map((s) => s.name).sort();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// `visited` was keyed by file alone, so the second request for the same file — with a different name filter, or a
+// wildcard after a named re-export — returned immediately and silently dropped names.
+test("the same file reached twice with different name filters contributes every requested name", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export { A } from "./b.js";\nexport { B } from "./b.js";\n`,
+      "b.d.ts": `export declare const A: 1;\nexport declare const B: 2;\nexport declare const C: 3;\n`,
+    }),
+    ["A", "B"],
+  );
+});
+
+test("a wildcard re-export after a named one still contributes the file's other exports", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export { A } from "./b.js";\nexport * from "./b.js";\n`,
+      "b.d.ts": `export declare const A: 1;\nexport declare const B: 2;\n`,
+    }),
+    ["A", "B"],
+  );
+});
+
+test("re-export cycles terminate, and a name reachable twice is recorded once", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export * from "./a.js";\nexport * from "./b.js";\n`,
+      "a.d.ts": `export * from "./b.js";\nexport declare const A: 1;\n`,
+      "b.d.ts": `export * from "./a.js";\nexport { A } from "./a.js";\nexport declare const B: 2;\n`,
+    }),
+    ["A", "B"],
+  );
+});
+
+// `export { Foo as Bar }` recorded the symbol under its source name `Foo`, so `nest-doc pkg.Bar` was a miss and the
+// package index listed a name the package doesn't export.
+test("an aliased re-export is recorded under its exported name, through nested barrels", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export { Inner as Public } from "./mid.js";\nexport { Foo as Bar, Foo } from "./a.js";\n`,
+      "mid.d.ts": `export * from "./deep.js";\n`,
+      "deep.d.ts": `export declare class Inner {}\nexport declare class Hidden {}\n`,
+      "a.d.ts": `export declare function Foo(): void;\n`,
+    }),
+    ["Bar", "Foo", "Public"],
+  );
+});
+
+// rollup-plugin-dts / tsup emit one declaration file whose top-level declarations aren't exported individually —
+// a local `export { ... }` list at the bottom exports them. Only `export ... from` used to be followed, so such a
+// package extracted almost nothing. Real shape, from a tsup-built .d.ts.
+test("a local export list (bundled declaration files) exports declarations and imported bindings", async () => {
+  const names = await extractScratch({
+    "index.d.ts": [
+      `import { Helper } from "./helper.js";`,
+      `/** Configures the thing. */`,
+      `declare function configure(options?: Options): void;`,
+      `interface Options { verbose?: boolean }`,
+      `declare class Client {}`,
+      `declare const internalOnly: number;`,
+      `export { Client as default, Client, configure, Options as ClientOptions, Helper };`,
+      ``,
+    ].join("\n"),
+    "helper.d.ts": `export declare class Helper {}\n`,
+  });
+  assert.deepEqual(names, ["Client", "ClientOptions", "configure", "default", "Helper"].sort());
+});
+
+test("a declaration both exported inline and listed again in a local export list is recorded once", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-redundant-export-test-"));
+  try {
+    writeFileSync(join(root, "index.d.ts"), `export declare function once(): void;\nexport { once };\n`);
+    const records = await extractPackage(join(root, "index.d.ts"), root);
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.signature, "export declare function once(): void;", "not merged with itself as a fake overload");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Writes `files` (path -> contents) under a fresh root and extracts node_modules/<pkg>, the way a real install lays it out.
+async function extractInstalled(files: Record<string, string>, pkg: string, entryRelative = "index.d.ts"): Promise<SymbolRecord[]> {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-bare-reexport-test-"));
+  try {
+    mkdirSync(join(root, ".git"));
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    }
+    const packageDir = join(root, "node_modules", pkg);
+    return await extractPackage(join(packageDir, entryRelative), packageDir);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const depManifest = (name: string) => JSON.stringify({ name, version: "1.0.0", types: "index.d.ts" });
+
+// Verified against the latest Nest 10/11/12 installs: @nestjs/bull and @nestjs/bullmq re-export getQueueToken and
+// JOB_REF from @nestjs/bull-shared, and @nestjs/event-emitter@3 re-exports EventEmitter2 from eventemitter2 — real,
+// documented API that a walk refusing every bare specifier silently dropped.
+test("a bare re-export from an installed dependency is followed into that package", async () => {
+  const records = await extractInstalled(
+    {
+      "node_modules/@nestjs/bull/index.d.ts": `export { getQueueToken, JOB_REF } from "@nestjs/bull-shared";\nexport * from "eventemitter2";\nexport declare const Own: 1;\n`,
+      "node_modules/@nestjs/bull-shared/package.json": depManifest("@nestjs/bull-shared"),
+      "node_modules/@nestjs/bull-shared/index.d.ts": `export * from "./utils.js";\n`,
+      "node_modules/@nestjs/bull-shared/utils.d.ts": `/** Returns the queue's DI token. */\nexport declare function getQueueToken(name?: string): string;\nexport declare const JOB_REF = "JOB_REF";\nexport declare const NOT_REEXPORTED: 1;\n`,
+      "node_modules/eventemitter2/package.json": depManifest("eventemitter2"),
+      "node_modules/eventemitter2/index.d.ts": `export declare class EventEmitter2 {}\n`,
+    },
+    "@nestjs/bull",
+  );
+  assert.deepEqual(records.map((r) => r.name).sort(), ["EventEmitter2", "getQueueToken", "JOB_REF", "Own"].sort());
+  const token = records.find((r) => r.name === "getQueueToken")!;
+  assert.equal(token.doc, "Returns the queue's DI token.");
+  assert.equal(token.file, "@nestjs/bull-shared/utils.d.ts", "file names the dependency it came from");
+});
+
+test("a bare re-export resolves from the re-exporting file's real path (pnpm's store layout)", async () => {
+  const store = "node_modules/.pnpm/@nestjs+bull@1.0.0/node_modules";
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-pnpm-reexport-test-"));
+  try {
+    mkdirSync(join(root, ".git"));
+    const write = (path: string, contents: string) => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
+    };
+    write(`${store}/@nestjs/bull/index.d.ts`, `export { getQueueToken } from "@nestjs/bull-shared";\n`);
+    write(`${store}/@nestjs/bull-shared/package.json`, depManifest("@nestjs/bull-shared"));
+    write(`${store}/@nestjs/bull-shared/index.d.ts`, `export declare function getQueueToken(): string;\n`);
+    // Only the direct dependency is linked at the top level, as pnpm does; bull-shared exists only inside the store.
+    mkdirSync(join(root, "node_modules", "@nestjs"), { recursive: true });
+    symlinkSync(join(root, store, "@nestjs", "bull"), join(root, "node_modules", "@nestjs", "bull"));
+    const packageDir = join(root, "node_modules", "@nestjs", "bull");
+    const records = await extractPackage(join(packageDir, "index.d.ts"), packageDir);
+    assert.deepEqual(records.map((r) => r.name), ["getQueueToken"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// SECURITY (ADR-0009): a bare specifier is third-party text too. Only a valid package name is ever looked up, and
+// the dependency is walked inside its own root — so nothing here can read outside an installed package.
+test("bare specifiers can't be used to escape: traversal, subpaths, node: builtins, and relative escapes from a dependency", async () => {
+  const records = await extractInstalled(
+    {
+      "node_modules/evil/index.d.ts": [
+        `export * from "dep/../../secret/leak";`,
+        `export * from "@scope/../secret/leak";`,
+        `export * from "dep/sub";`,
+        `export * from "node:events";`,
+        `export * from "dep";`,
+        ``,
+      ].join("\n"),
+      "node_modules/dep/package.json": depManifest("dep"),
+      "node_modules/dep/index.d.ts": `export * from "../../secret/leak.js";\nexport declare const safe: 1;\n`,
+      "node_modules/dep/sub.d.ts": `export declare const viaSubpath: 1;\n`,
+      "secret/leak.d.ts": `export declare const leaked: 1;\n`,
+    },
+    "evil",
+  );
+  assert.deepEqual(records.map((r) => r.name), ["safe"]);
+});
+
+// @nestjs/swagger@12's "./plugin" entry point ends in `declare const _default: …; export default _default;` — the
+// TypeScript checker lists `default` among its exports, the walk didn't. `export *` must still never carry a default.
+test("default exports are recorded as `default`, and `export *` never re-exports one", async () => {
+  assert.deepEqual(
+    await extractScratch({
+      "index.d.ts": `export * from "./a.js";\nexport { default as Named } from "./b.js";\ndeclare const _default: () => void;\nexport default _default;\n`,
+      "a.d.ts": `export declare const fromA: 1;\nexport default class HiddenByStar {}\n`,
+      "b.d.ts": `export default function namedTarget(): void;\n`,
+    }),
+    ["default", "fromA", "Named"].sort(),
+  );
+});
+
+// @nestjs/cache-manager (every Nest major): a documented `abstract class Cache` — the injection token — merged with an
+// undocumented `interface Cache`. Keeping only the last declaration showed the bare interface and lost the docs.
+test("declaration merging keeps every declaration, the documented prose, and the value's kind", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-merge-test-"));
+  try {
+    writeFileSync(
+      join(root, "index.d.ts"),
+      `/** Use as a provider token. */\nexport declare abstract class Cache {\n}\nexport interface Cache extends Store {\n}\nexport type Token = string;\nexport declare const Token: unique symbol;\n`,
+    );
+    const records = await extractPackage(join(root, "index.d.ts"), root);
+    const cache = records.find((r) => r.name === "Cache")!;
+    assert.equal(cache.kind, "class");
+    assert.equal(cache.doc, "Use as a provider token.");
+    assert.deepEqual(cache.signature.split("\n"), ["export declare abstract class Cache { }", "export interface Cache extends Store { }"]);
+    assert.equal(records.find((r) => r.name === "Token")!.kind, "const", "a type alias merged with a const is the const");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

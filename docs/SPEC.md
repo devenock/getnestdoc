@@ -114,7 +114,7 @@ and file since this was written; not a routing-parser bug.
 
 ## 2b. `data/names.json` and `data/packages.json`
 
-Both produced by `scripts/build-packages.ts` (ADR-0007, ADR-0010) in one extraction pass over the full official `@nestjs/*` scope — every name in `package-scope.ts`'s shorthand table except `cli` and `mau`, which ship no extractable types.
+Both produced by `scripts/build-packages.ts` (ADR-0007, ADR-0010) in one extraction pass over the full official `@nestjs/*` scope — every name in `package-scope.ts`'s shorthand table except `cli` and `mau`, which ship no extractable types. Each package is installed with its dependencies (so re-exports from them resolve), and each named subpath entry point is bundled as its own entry keyed by full specifier (`@nestjs/common/internal`, ADR-0014). In `names.json` a subpath entry owns a name only when no package root exports it.
 
 ```ts
 type NameIndex = {
@@ -130,7 +130,7 @@ type PackagesFile = {
 };
 ```
 
-`names.json` maps a bare symbol name to its owning package(s); where a name maps to several, the CLI lists them and exits 1 rather than guessing. `packages.json` carries full `SymbolRecord[]` data per package — the reference fallback `resolvePackageSymbolsOrBundled` reaches for only when a live `node_modules` lookup misses. A live install always wins over bundled data; output from the bundled path carries an explicit note naming the bundled version.
+`names.json` maps a bare symbol name to its owning package(s); where a name maps to several, the CLI uses the one installed in the project if exactly one is, and otherwise lists them and exits 1 rather than guessing. `packages.json` carries full `SymbolRecord[]` data per package — the reference fallback `resolvePackageSymbolsOrBundled` reaches for only when a live `node_modules` lookup misses. A live install always wins over bundled data; output from the bundled path carries an explicit note naming the bundled version.
 
 ---
 
@@ -140,7 +140,7 @@ Path: `${XDG_CACHE_HOME:-~/.cache}/getnestdoc/<name>@<version>.json`, with `/` i
 
 ```ts
 type CacheFile = {
-  version: 1;            // bump invalidates every entry
+  version: 5;            // bump invalidates every entry — bumped whenever extraction output changes
   package: string;
   packageVersion: string;
   entryFile: string;     // absolute path extraction started from
@@ -151,12 +151,12 @@ type CacheFile = {
 type SymbolRecord = {
   name: string;
   kind: "function" | "class" | "interface" | "type" | "enum" | "const" | "variable";
-  signature: string;     // declaration text, JSDoc lines stripped, single line where possible
+  signature: string;     // declaration text, JSDoc lines stripped, single line where possible; one line per declaration for overloads and merged declarations (ADR-0011)
   doc: string;           // JSDoc body, markdown, no tags
   tags: { name: string; text: string }[];
   see: { text: string; url: string }[];
   isPublicApi: boolean;
-  file: string;          // relative to package root
+  file: string;          // relative to package root; "<dependency>/<path>" when re-exported from a dependency
   line: number;          // 1-based
 };
 ```
@@ -229,7 +229,18 @@ Did you mean?
   nest-doc exception-filters
 ```
 
-Exit 1. Suggestions to stderr, so piping stays clean.
+Exit 1. Suggestions to stderr, so piping stays clean. Candidates are guide slugs, alias URLs, and — unless `--guide` — every name in `names.json`.
+
+A `package.symbol` query whose package resolves (installed or bundled) but has no such export is a miss answered from that package's own export list:
+
+```
+No export "Injectible" in @nestjs/common@12.0.1.
+
+Did you mean?
+  nest-doc common.Injectable
+```
+
+Same exit code and stream. The one exception: if the whole query is itself a resolvable package name containing a dot (`socket.io`), it resolves as that package instead.
 
 ---
 
@@ -237,13 +248,15 @@ Exit 1. Suggestions to stderr, so piping stays clean.
 
 ```
 nest-doc <query>              lookup, auto-detected
+nest-doc <guide>#<anchor>     one section of a guide (ADR-0012)
+nest-doc <package>/<subpath>  a subpath entry point, e.g. @nestjs/platform-fastify/multipart (ADR-0014)
 nest-doc @Get                 decorator lookup
 nest-doc Get                  bare symbol lookup
 nest-doc <query> --guide      force guide
 nest-doc <query> --api        force symbol
 nest-doc <query> --js         JavaScript code samples
 nest-doc --all <package>      include non-public exports
-nest-doc update               refresh guide corpus (only networked command)
+nest-doc update               refresh guide corpus into $XDG_DATA_HOME/getnestdoc/<version>/ (only networked command)
 nest-doc --clear-cache
 nest-doc --version
 nest-doc --help
@@ -273,7 +286,9 @@ A scoped package (step 3) or a recognised shorthand (`common`, `throttler`, and 
 
 Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the symbol.
 
-`--guide` restricts to 1–2, `--api` to 3–5. A query matching both prints both headings and asks the user to disambiguate; it never guesses.
+A package query may carry a subpath (`@nestjs/common/internal`, shorthand `common/internal`), resolved through the package's `exports` map by Node's rules (ADR-0014); `package/subpath.Symbol` works the same way. A subpath the installed package doesn't export is a miss: `<pkg>@<v> has no "./<subpath>" entry point.`, listing the ones it does name, exit 1. A root package index lists its named entry points under `ENTRY POINTS`.
+
+`--guide` restricts to 1–2, `--api` to 3–5. The two are mutually exclusive: passing both is a usage error, exit 2. A bare word matching both a guide and a symbol is *not* ambiguous — the guide wins, per the tie rule above; the only ambiguous case is a bare symbol name exported by several packages (§2b), which lists them and exits 1.
 
 ### Exit codes
 
@@ -282,8 +297,8 @@ Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the sym
 | 0 | success |
 | 1 | query not found |
 | 2 | usage error — unknown flag, missing argument |
-| 3 | package found but unusable — ships no types |
-| 4 | internal error — unexpected, prints a stack trace |
+| 3 | package found but unusable — ships no types, or its package.json can't be read |
+| 4 | internal error — unexpected, prints a stack trace (also: `typescript` missing or 7.x on a symbol lookup, `nest-doc update` failing) |
 
 ### Environment
 
@@ -291,6 +306,7 @@ Guides win ties: `nest-doc Module` resolves to the guide; `--api` forces the sym
 |---|---|
 | `NO_COLOR` | disable ANSI, any value |
 | `XDG_CACHE_HOME` | cache location |
+| `XDG_DATA_HOME` | where `nest-doc update` stores a refreshed guide corpus (ADR-0013) |
 | `FORCE_COLOR` | force ANSI when not a TTY |
 
 When `!process.stdout.isTTY`, colour is off and width is 80 regardless of `columns`.
@@ -303,9 +319,10 @@ Runtime dependencies are a latency cost. Each addition needs a measured bundled 
 
 | Package | Version | Why | Loaded |
 |---|---|---|---|
-| `typescript` | `6.0.3` **exact** | Compiler API; 7.x removed it (ADR-0001) | lazily, symbol path only |
+| `typescript` | `6.0.3` **exact** | Compiler API; 7.x removed it (ADR-0001) | lazily, cold symbol path only |
 | `commander` | `^15.0.0` | CLI parsing (ADR-0005) | always |
+| `marked` | `^18.0.11` | tokenising guides — `nest-doc update` only | lazily, `update` only |
 
-`marked` is a **devDependency**. Guides ship pre-tokenised, so it never loads at runtime.
+`marked` is a runtime dependency only because `nest-doc update` re-runs the guide pipeline on the user's machine. Guides ship pre-tokenised, so no lookup ever loads it.
 
 Not used, deliberately: `marked-terminal` (+79 ms, ADR-0003), `cli-highlight` (pulls highlight.js), `chalk` (ANSI codes are a dozen constants).
