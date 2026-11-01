@@ -145,7 +145,7 @@ test("every resolvable See also entry across @nestjs/common, when run as a comma
   assert.ok(found);
   const entry = resolveEntryTypes(found);
   assert.ok(entry.found);
-  const symbols = await extractPackage(entry.entryFile);
+  const symbols = await extractPackage(entry.entryFile, entry.packageRoot);
 
   const guidesFile = loadGuides(join(REPO_ROOT, "data"));
   const aliasFile = loadAliases(join(REPO_ROOT, "data"));

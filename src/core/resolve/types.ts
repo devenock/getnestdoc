@@ -20,6 +20,7 @@ export type FoundPackage = {
 
 type EntryResolutionCase = 1 | 2 | 3 | 4;
 
+// `packageRoot` bounds everything extraction may read: the package directory, or the @types/* directory for case 4.
 export type EntryResolution =
-  | { found: true; entryFile: string; resolutionCase: EntryResolutionCase }
+  | { found: true; entryFile: string; packageRoot: string; resolutionCase: EntryResolutionCase }
   | { found: false };

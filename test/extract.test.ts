@@ -2,7 +2,7 @@ import { before, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPackage } from "../src/core/extract/barrels.ts";
 import type { SymbolRecord } from "../src/core/extract/types.ts";
@@ -16,7 +16,7 @@ let extractionMs: number;
 
 before(async () => {
   const start = process.hrtime.bigint();
-  symbols = await extractPackage(ENTRY_FILE);
+  symbols = await extractPackage(ENTRY_FILE, dirname(ENTRY_FILE));
   extractionMs = Number(process.hrtime.bigint() - start) / 1e6;
 });
 
@@ -118,7 +118,7 @@ test("a barrel's export specifier cannot traverse outside the package's own dire
     mkdirSync(packageDir, { recursive: true });
     writeFileSync(join(packageDir, "index.d.ts"), `export * from "../secret-location/leaked.js";\n`);
 
-    const symbolsFromMaliciousBarrel = await extractPackage(join(packageDir, "index.d.ts"));
+    const symbolsFromMaliciousBarrel = await extractPackage(join(packageDir, "index.d.ts"), packageDir);
     assert.equal(symbolsFromMaliciousBarrel.length, 0, "a specifier resolving outside the package root must not be followed at all");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -145,7 +145,7 @@ test("a raw escape sequence embedded in a JSDoc comment never reaches the extrac
       `/**\n * innocuous docs ${esc}]0;PWNED-TITLE${bel} more text\n */\nexport declare function totallyNormal(): void;\n`,
     );
 
-    const [symbol] = await extractPackage(join(packageDir, "index.d.ts"));
+    const [symbol] = await extractPackage(join(packageDir, "index.d.ts"), packageDir);
     assert.ok(symbol, "totallyNormal not found");
     assert.ok(!symbol!.doc.includes(esc), `doc still contains a raw ESC byte: ${JSON.stringify(symbol!.doc)}`);
     assert.ok(!symbol!.doc.includes(bel), `doc still contains a raw BEL byte: ${JSON.stringify(symbol!.doc)}`);
@@ -159,8 +159,28 @@ test("an .mjs barrel specifier resolves to its .d.mts declaration file", async (
   try {
     writeFileSync(join(root, "index.d.mts"), `export * from "./thing.mjs";\n`);
     writeFileSync(join(root, "thing.d.mts"), `export declare function fromMjs(): void;\n`);
-    const names = (await extractPackage(join(root, "index.d.mts"))).map((s) => s.name);
+    const names = (await extractPackage(join(root, "index.d.mts"), root)).map((s) => s.name);
     assert.deepEqual(names, ["fromMjs"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The containment root is now the package directory, not dirname(entryFile): a dist/ entry legitimately
+// re-exporting from a sibling directory of the same package must still be followed.
+test("a dist/ entry may re-export from elsewhere inside its own package, but never outside it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-package-root-test-"));
+  try {
+    const packageDir = join(root, "pkg");
+    mkdirSync(join(packageDir, "dist"), { recursive: true });
+    mkdirSync(join(packageDir, "types"), { recursive: true });
+    writeFileSync(join(packageDir, "dist", "index.d.ts"), `export * from "../types/shared.js";\nexport * from "../../outside.js";\n`);
+    writeFileSync(join(packageDir, "types", "shared.d.ts"), `export declare const shared: number;\n`);
+    writeFileSync(join(root, "outside.d.ts"), `export declare const outside: number;\n`);
+
+    const records = await extractPackage(join(packageDir, "dist", "index.d.ts"), packageDir);
+    assert.deepEqual(records.map((s) => s.name), ["shared"]);
+    assert.equal(records[0]!.file, join("types", "shared.d.ts"), "file is relative to the package root (SPEC.md §3)");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

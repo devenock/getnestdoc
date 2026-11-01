@@ -40,7 +40,7 @@ export async function resolvePackageSymbols(rawName: string, startDir: string): 
     return { status: "found", result: { packageName, packageVersion, symbols: cached.symbols } };
   }
 
-  const symbols = await extractPackage(entryResolution.entryFile);
+  const symbols = await extractPackage(entryResolution.entryFile, entryResolution.packageRoot);
   writeCache(cacheDir, {
     version: 1,
     package: packageName,

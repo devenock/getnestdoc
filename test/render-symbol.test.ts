@@ -19,7 +19,7 @@ async function extract(name: string): Promise<{ symbols: SymbolRecord[]; version
   assert.ok(found, `${name} fixture not found`);
   const entry = resolveEntryTypes(found);
   assert.ok(entry.found, `${name}: no entry resolved`);
-  return { symbols: await extractPackage(entry.entryFile), version: found.manifest.version ?? "0.0.0" };
+  return { symbols: await extractPackage(entry.entryFile, entry.packageRoot), version: found.manifest.version ?? "0.0.0" };
 }
 
 const guidesFile = loadGuides(REPO_DATA);

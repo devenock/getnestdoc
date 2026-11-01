@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+import { isContained } from "../contain.ts";
 import type { DeclarationEntry } from "./parse.ts";
 import { getExportedDeclarations, getExportStatements, parseSourceFile } from "./parse.ts";
 import { extractJsDoc } from "./jsdoc.ts";
@@ -20,10 +21,8 @@ function resolveModuleSpecifier(fromDir: string, specifier: string, packageRoot:
   const withoutExt = ext ? specifier.slice(0, -ext[0].length) : specifier;
   const direct = join(fromDir, `${withoutExt}.d.${ext?.[1] ?? ""}ts`);
   const resolved = existsSync(direct) ? direct : join(fromDir, withoutExt, "index.d.ts");
-  if (!existsSync(resolved)) return undefined;
-
-  const resolvedRoot = resolve(packageRoot) + sep;
-  return resolve(resolved).startsWith(resolvedRoot) ? resolved : undefined;
+  if (!existsSync(resolved) || !statSync(resolved).isFile()) return undefined;
+  return isContained(packageRoot, resolved) ? resolved : undefined;
 }
 
 function buildSymbolRecord(
@@ -51,9 +50,11 @@ function buildSymbolRecord(
 }
 
 // Walks a package's barrel graph from its entry .d.ts, collecting every exported symbol; the only place `typescript` actually loads.
-export async function extractPackage(entryFile: string): Promise<SymbolRecord[]> {
+// `packageRoot` is the package directory (EntryResolution.packageRoot): no file outside it is ever read, and each
+// record's `file` is relative to it.
+export async function extractPackage(entryFile: string, packageRoot: string): Promise<SymbolRecord[]> {
   const ts = await loadTypeScript();
-  const packageRoot = dirname(entryFile);
+  if (!isContained(packageRoot, entryFile)) return [];
   const visited = new Set<string>();
   const results: SymbolRecord[] = [];
 

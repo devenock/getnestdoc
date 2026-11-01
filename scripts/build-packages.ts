@@ -92,7 +92,7 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const symbols = await extractPackage(entry.entryFile);
+      const symbols = await extractPackage(entry.entryFile, entry.packageRoot);
       packages[packageName] = { packageVersion: version, symbols };
 
       for (const symbol of symbols) {

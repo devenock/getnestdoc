@@ -1,15 +1,17 @@
 import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { isContained } from "../contain.ts";
 import type { EntryResolution, FoundPackage } from "./types.ts";
 
 function isFile(path: string): boolean {
   return existsSync(path) && statSync(path).isFile();
 }
 
-// A package-relative path to a real file, or undefined — a directory or missing path is never an entry point.
+// A package-relative path to a real file inside the package, or undefined — a directory, a missing path, or anything
+// a crafted `types`/`exports`/`main` value points outside the package (`"../../x.d.ts"`) is never an entry point.
 function fileAt(packageDir: string, relativePath: string): string | undefined {
   const candidate = join(packageDir, relativePath);
-  return isFile(candidate) ? candidate : undefined;
+  return isFile(candidate) && isContained(packageDir, candidate) ? candidate : undefined;
 }
 
 // The declaration file beside a JS entry: .js -> .d.ts, .mjs -> .d.mts, .cjs -> .d.cts. An extensionless
@@ -70,7 +72,7 @@ export function resolveEntryTypes(found: FoundPackage): EntryResolution {
   const explicit = manifest.types ?? manifest.typings;
   if (explicit) {
     const candidate = fileAt(packageDir, explicit);
-    if (candidate) return { found: true, entryFile: candidate, resolutionCase: 1 };
+    if (candidate) return { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 1 };
   }
 
   // 2 & 3. exports map — a types condition (case 2), or sibling inference
@@ -81,22 +83,22 @@ export function resolveEntryTypes(found: FoundPackage): EntryResolution {
 
     for (const { path } of candidates.filter((c) => c.isTypes)) {
       const candidate = fileAt(packageDir, path);
-      if (candidate) return { found: true, entryFile: candidate, resolutionCase: 2 };
+      if (candidate) return { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 2 };
     }
     for (const { path } of candidates.filter((c) => !c.isTypes)) {
       const candidate = siblingDts(packageDir, path);
-      if (candidate) return { found: true, entryFile: candidate, resolutionCase: 3 };
+      if (candidate) return { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 3 };
     }
   } else {
     // No exports map at all: fall back to "main", defaulting to Node's own implicit "./index.js".
     const mainField = manifest.main ?? "./index.js";
     const candidate = siblingDts(packageDir, mainField);
-    if (candidate) return { found: true, entryFile: candidate, resolutionCase: 3 };
+    if (candidate) return { found: true, entryFile: candidate, packageRoot: packageDir, resolutionCase: 3 };
   }
 
   // 4. @types/* fallback.
   const typesCandidate = join(found.nodeModulesDir, "@types", flattenScopedName(found.name), "index.d.ts");
-  if (isFile(typesCandidate)) return { found: true, entryFile: typesCandidate, resolutionCase: 4 };
+  if (isFile(typesCandidate)) return { found: true, entryFile: typesCandidate, packageRoot: dirname(typesCandidate), resolutionCase: 4 };
 
   return { found: false };
 }
