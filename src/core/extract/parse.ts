@@ -53,27 +53,57 @@ function addTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   else if (!list.includes(value)) list.push(value);
 }
 
-// Builds a file's export table: declarations it owns, plus `export * from` / `export { A } from` re-exports.
+// Builds a file's export table. Three shapes beyond `export declare ...` matter in real .d.ts output:
+// `export { A as B } from "./x"` (named re-export, possibly aliased), `declare class A {}; export { A as B }` (a local
+// export list — how rollup/tsup-bundled declaration files export everything), and `import { A } from "./x"; export { A }`.
 export function getFileExports(ts: typeof TS, sourceFile: TS.SourceFile): FileExports {
+  const local = new Map<string, DeclarationEntry[]>();
   const declarations = new Map<string, DeclarationEntry[]>();
+  const imports = new Map<string, { specifier: string; importedName: string }>();
   const forwards: ExportForward[] = [];
 
   for (const statement of sourceFile.statements) {
-    if (isExported(ts, statement)) {
-      for (const entry of declarationsIn(ts, statement)) addTo(declarations, entry.name, entry);
+    for (const entry of declarationsIn(ts, statement)) {
+      addTo(local, entry.name, entry);
+      if (isExported(ts, statement)) addTo(declarations, entry.name, entry);
+    }
+
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          imports.set(element.name.text, { specifier: statement.moduleSpecifier.text, importedName: (element.propertyName ?? element.name).text });
+        }
+      }
     }
   }
 
   for (const statement of sourceFile.statements) {
     if (!ts.isExportDeclaration(statement)) continue;
-    if (!statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    const specifier = statement.moduleSpecifier.text;
+    const specifier = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : undefined;
 
     if (!statement.exportClause) {
-      forwards.push({ kind: "wildcard", specifier });
-    } else if (ts.isNamedExports(statement.exportClause)) {
-      const names = statement.exportClause.elements.map((el) => ({ sourceName: (el.propertyName ?? el.name).text, exportedName: el.name.text }));
+      if (specifier !== undefined) forwards.push({ kind: "wildcard", specifier });
+      continue;
+    }
+    // `export * as ns from` exports a namespace object, not individual symbols — not followed.
+    if (!ts.isNamedExports(statement.exportClause)) continue;
+
+    const names = statement.exportClause.elements.map((el) => ({ sourceName: (el.propertyName ?? el.name).text, exportedName: el.name.text }));
+    if (specifier !== undefined) {
       if (names.length > 0) forwards.push({ kind: "named", specifier, names });
+      continue;
+    }
+
+    // A local export list: each name is either a declaration in this file or an imported binding to follow.
+    for (const { sourceName, exportedName } of names) {
+      const entries = local.get(sourceName);
+      if (entries) {
+        for (const entry of entries) addTo(declarations, exportedName, entry);
+        continue;
+      }
+      const imported = imports.get(sourceName);
+      if (imported) forwards.push({ kind: "named", specifier: imported.specifier, names: [{ sourceName: imported.importedName, exportedName }] });
     }
   }
 

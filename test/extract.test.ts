@@ -266,3 +266,35 @@ test("an aliased re-export is recorded under its exported name, through nested b
     ["Bar", "Foo", "Public"],
   );
 });
+
+// rollup-plugin-dts / tsup emit one declaration file whose top-level declarations aren't exported individually —
+// a local `export { ... }` list at the bottom exports them. Only `export ... from` used to be followed, so such a
+// package extracted almost nothing. Real shape, from a tsup-built .d.ts.
+test("a local export list (bundled declaration files) exports declarations and imported bindings", async () => {
+  const names = await extractScratch({
+    "index.d.ts": [
+      `import { Helper } from "./helper.js";`,
+      `/** Configures the thing. */`,
+      `declare function configure(options?: Options): void;`,
+      `interface Options { verbose?: boolean }`,
+      `declare class Client {}`,
+      `declare const internalOnly: number;`,
+      `export { Client as default, Client, configure, Options as ClientOptions, Helper };`,
+      ``,
+    ].join("\n"),
+    "helper.d.ts": `export declare class Helper {}\n`,
+  });
+  assert.deepEqual(names, ["Client", "ClientOptions", "configure", "default", "Helper"].sort());
+});
+
+test("a declaration both exported inline and listed again in a local export list is recorded once", async () => {
+  const root = mkdtempSync(join(tmpdir(), "getnestdoc-redundant-export-test-"));
+  try {
+    writeFileSync(join(root, "index.d.ts"), `export declare function once(): void;\nexport { once };\n`);
+    const records = await extractPackage(join(root, "index.d.ts"), root);
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.signature, "export declare function once(): void;", "not merged with itself as a fake overload");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
