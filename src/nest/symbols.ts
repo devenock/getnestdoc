@@ -1,5 +1,6 @@
 import { extractPackage } from "../core/extract/barrels.ts";
 import type { SymbolRecord } from "../core/extract/types.ts";
+import { own } from "../core/own.ts";
 import { getCacheDir } from "../core/cache/paths.ts";
 import { readCache, writeCache } from "../core/cache/store.ts";
 import { describeUnusablePackage, resolveEntryTypes } from "../core/resolve/entry-types.ts";
@@ -59,7 +60,7 @@ export async function resolvePackageSymbolsOrBundled(rawName: string, startDir: 
   const live = await resolvePackageSymbols(rawName, startDir);
   if (live.status !== "not-installed") return live;
 
-  const bundled = loadBundledPackages(dataDir).packages[live.packageName];
+  const bundled = own(loadBundledPackages(dataDir).packages, live.packageName);
   if (!bundled) return live;
 
   return {

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { own } from "../../core/own.ts";
 import type { AliasFile } from "../aliases.ts";
 import type { Guide, GuidesFile } from "./types.ts";
 
@@ -15,11 +16,11 @@ const CONCEPT_ALIASES: Record<string, string> = {
 
 // Resolves a guide by exact slug, then the alias table, then a case-folded retry as a last resort.
 export function findGuide(query: string, guidesFile: GuidesFile, aliasFile: AliasFile): Guide | undefined {
-  const exact = guidesFile.guides[query];
+  const exact = own(guidesFile.guides, query);
   if (exact) return exact;
 
-  const aliasedSlug = aliasFile.urlToSlug[query] ?? CONCEPT_ALIASES[query];
-  if (aliasedSlug) return guidesFile.guides[aliasedSlug];
+  const aliasedSlug = own(aliasFile.urlToSlug, query) ?? own(CONCEPT_ALIASES, query);
+  if (aliasedSlug) return own(guidesFile.guides, aliasedSlug);
 
   const lower = query.toLowerCase();
   if (lower !== query) return findGuide(lower, guidesFile, aliasFile);

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SymbolRecord } from "../core/extract/types.ts";
+import { own } from "../core/own.ts";
 import { resolvePackageSymbols, resolvePackageSymbolsOrBundled } from "./symbols.ts";
 
 // The shape of the built bare-symbol-name index: symbol name mapped to the package(s) that export it.
@@ -57,7 +58,7 @@ async function scanInstalledPackagesForName(name: string, startDir: string): Pro
 // Resolves a bare symbol name to its package; `name` has already had a leading "@" stripped by the caller.
 export async function resolveBareSymbol(name: string, dataDir: string, startDir: string): Promise<BareSymbolResolution> {
   const nameIndex = loadNameIndex(dataDir);
-  const owners = nameIndex.names[name];
+  const owners = own(nameIndex.names, name);
 
   if (!owners) return scanInstalledPackagesForName(name, startDir);
   if (owners.length > 1) return { status: "ambiguous", packageNames: owners };
